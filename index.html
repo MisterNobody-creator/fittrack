@@ -183,6 +183,10 @@
   .shoprow:first-of-type{border-top:none}
   .shoprow .qty{color:var(--accent); font-weight:700; margin-right:6px}
   input[type=checkbox]{width:18px; height:18px; padding:0; accent-color:#8b5cf6; flex-shrink:0}
+  /* Streak-Flamme */
+  @keyframes flamePulse{0%,100%{transform:scale(1)} 50%{transform:scale(1.22) rotate(-4deg)}}
+  .streakflame{display:inline-block; animation:flamePulse 1.8s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){ .streakflame{animation:none} }
 </style>
 </head>
 <body>
@@ -951,6 +955,48 @@ function macroTargets(){
   return {p: t*m.p/100/4, c: t*m.c/100/4, f: t*m.f/100/9};
 }
 
+/* ---------- Streak & Wochenrückblick (rein abgeleitet, keine neuen Speicherdaten) ---------- */
+function hasEntriesOn(ds){
+  const d = state.diary[ds];
+  if(d){
+    if(d.meals) for(const k of Object.keys(d.meals)) if(d.meals[k] && d.meals[k].length) return true;
+    if(d.water>0 || d.steps>0 || (d.activities && d.activities.length)) return true;
+  }
+  return state.sessions.some(s=>s.date===ds);
+}
+function loggingStreak(){
+  let ds = todayStr(), n = 0;
+  if(!hasEntriesOn(ds)) ds = addDays(ds,-1);   // heute zählt erst nach dem ersten Eintrag, bricht den Streak aber nicht
+  while(hasEntriesOn(ds)){ n++; ds = addDays(ds,-1); }
+  return n;
+}
+function weekStats(monday){
+  const end = addDays(monday,6);
+  let kcal=0, days=0, water=0, workouts=0, vol=0;
+  for(let i=0;i<7;i++){
+    const ds = addDays(monday,i);
+    if(ds>todayStr()) break;
+    if(state.diary[ds]){
+      const t = dayTotals(ds);
+      if(t.kcal>0){ kcal += t.kcal; days++; }
+      water += state.diary[ds].water||0;
+    }
+  }
+  for(const s of state.sessions) if(s.date>=monday && s.date<=end){ workouts++; vol += sessionVolume(s); }
+  return {avgKcal: days ? kcal/days : 0, days, water, workouts, vol};
+}
+function trendMark(cur, prev, goodDown){
+  const diff = cur - prev;
+  if(Math.abs(diff) < 0.01) return '<span class="muted" style="margin-left:5px">＝</span>';
+  const up = diff > 0;
+  const good = goodDown ? !up : up;
+  return '<span style="margin-left:5px; color:'+(good?"var(--green)":"var(--red)")+'">'+(up?"▲":"▼")+'</span>';
+}
+function wkRow(label, curVal, prevVal, mark){
+  return '<div class="row between" style="padding:5px 0; font-size:13.5px"><span class="muted">'+label+'</span>'
+    + '<span><b>'+curVal+'</b><span class="muted" style="font-size:11px"> · Vorwoche '+prevVal+'</span>'+mark+'</span></div>';
+}
+
 /* ---------- Navigation ---------- */
 let currentTab = "dashboard";
 function switchTab(tab){
@@ -1007,6 +1053,14 @@ function renderDashboard(){
   if(!state.profile.setupDone){
     html += '<div class="banner">👋 <b>Willkommen bei FitTrack!</b><br>Lege zuerst im Profil deine Daten und dein Kalorienziel fest – der Rechner hilft dir dabei.<br><button class="btn small" style="margin-top:10px" onclick="switchTab(\'profile\')">Zum Profil</button></div>';
   }
+
+  // Streak & Workouts diese Woche
+  const streak = loggingStreak();
+  const wkWorkouts = state.sessions.filter(s=>s.date>=mondayOf(ds) && s.date<=ds).length;
+  html += '<div class="statgrid">'
+    + '<div class="stat"><b>'+streak+'</b><span><span class="streakflame">🔥</span> '+(streak===1?'Tag':'Tage')+'-Streak'+(streak>0?' · dranbleiben!':' · heute starten!')+'</span></div>'
+    + '<div class="stat"><b>'+wkWorkouts+'</b><span>🏋️ Workouts diese Woche</span></div>'
+    + '</div>';
 
   html += '<div class="card"><div class="cardhead"><span class="cicon">🔥</span><h3>Kalorien heute</h3></div>'
     + '<div class="ringwrap">'
@@ -2168,6 +2222,20 @@ function cancelWorkout(silent){
    ============================================================ */
 function renderProgress(){
   let html = "";
+
+  // Wochenrückblick (aktuelle Woche vs. Vorwoche)
+  const thisMon = mondayOf(todayStr());
+  const cur = weekStats(thisMon), prev = weekStats(addDays(thisMon,-7));
+  html += '<div class="card"><div class="cardhead"><span class="cicon">📅</span><h3>Wochenrückblick</h3><span class="muted">vs. Vorwoche</span></div>';
+  if(cur.days===0 && cur.workouts===0 && prev.days===0 && prev.workouts===0){
+    html += '<p class="empty">Noch keine Daten – trage Mahlzeiten ein oder starte ein Workout.</p>';
+  } else {
+    html += wkRow("Ø Kalorien/Tag", r0(cur.avgKcal)+" kcal", r0(prev.avgKcal)+" kcal", trendMark(cur.avgKcal, prev.avgKcal, state.profile.goal==="abnehmen"))
+      + wkRow("Workouts", cur.workouts, prev.workouts, trendMark(cur.workouts, prev.workouts, false))
+      + wkRow("Trainingsvolumen", r0(cur.vol).toLocaleString("de-DE")+" kg", r0(prev.vol).toLocaleString("de-DE")+" kg", trendMark(cur.vol, prev.vol, false))
+      + wkRow("Wasser (Gläser)", cur.water, prev.water, trendMark(cur.water, prev.water, false));
+  }
+  html += '</div>';
 
   // Gewicht
   const ws = state.weights.slice().sort((a,b)=>a.date.localeCompare(b.date));
