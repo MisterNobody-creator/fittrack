@@ -43,13 +43,13 @@
   ::-webkit-scrollbar-track{background:transparent}
   header{position:sticky; top:0; z-index:40; display:flex; justify-content:space-between; align-items:center; padding:14px 18px; background:var(--hdrbg); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-bottom:1px solid var(--border)}
   .logo{font-size:21px; font-weight:800; letter-spacing:-.4px}
-  .logo b{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .logo b{background:linear-gradient(90deg,#6366f1,#a855f7,#38bdf8,#8b5cf6,#6366f1); background-size:320% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:logoShift 9s linear infinite}
   header .hdate{color:var(--muted); font-size:12.5px; font-weight:500}
   .tbtn{width:36px; height:36px; border-radius:12px; background:var(--card2); border:1px solid var(--border); color:var(--text); font-size:16px; flex-shrink:0; cursor:pointer}
   main{padding:14px 14px 0}
   h2{font-size:12.5px; margin:22px 6px 10px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:700}
   h3{font-size:15.5px; margin-bottom:8px; font-weight:700; letter-spacing:-.2px}
-  .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; box-shadow:var(--shadow)}
+  .card{background:var(--card); background-image:linear-gradient(180deg, rgba(255,255,255,.035), transparent 36%); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; box-shadow:var(--shadow); transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease}
   .cardhead{display:flex; align-items:center; gap:10px; margin-bottom:12px}
   .cardhead h3{margin:0; flex:1}
   .cicon{width:36px; height:36px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:17px; background:var(--card2); border:1px solid var(--border); flex-shrink:0}
@@ -80,7 +80,7 @@
   /* Bottom-Navigation */
   nav{position:fixed; bottom:12px; left:50%; transform:translateX(-50%); width:min(612px, calc(100% - 24px)); display:flex; gap:2px; background:var(--navbg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid var(--border); border-radius:22px; padding:6px; box-shadow:var(--shadow); z-index:50}
   nav button{flex:1; background:none; color:var(--muted); padding:8px 0 7px; font-size:10.5px; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:4px; border-radius:16px; transition:color .2s, background .2s}
-  nav button svg{width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round}
+  nav button svg{width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; transition:transform .2s}
   nav button.on{color:#fff; background:var(--grad); box-shadow:var(--glow)}
   /* Kalorien-Ring */
   .ringwrap{display:flex; align-items:center; gap:20px}
@@ -124,7 +124,7 @@
   /* Modal */
   .modal-bg{position:fixed; inset:0; background:rgba(5,8,15,.6); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); z-index:100; display:none; align-items:flex-end; justify-content:center}
   .modal-bg.open{display:flex}
-  .modal{background:var(--card-solid); width:100%; max-width:640px; max-height:88vh; overflow-y:auto; border-radius:26px 26px 0 0; padding:14px 18px 30px; border:1px solid var(--border); border-bottom:none; animation:slideUp .28s cubic-bezier(.2,.9,.3,1)}
+  .modal{background:var(--card-solid); width:100%; max-width:640px; max-height:88vh; overflow-y:auto; border-radius:26px 26px 0 0; padding:14px 18px 30px; border:1px solid var(--border); border-bottom:none; animation:slideUp .42s cubic-bezier(.3,1.25,.4,1)}
   .modal::before{content:""; display:block; width:44px; height:5px; border-radius:3px; background:var(--border2); margin:0 auto 14px}
   .modal h3{font-size:17px; margin-bottom:12px}
   .mclose{float:right; background:none; color:var(--muted); font-size:19px; padding:2px 6px}
@@ -145,8 +145,8 @@
   .overlay{position:fixed; inset:0; background:var(--bg); z-index:90; display:none; overflow-y:auto; max-width:640px; margin:0 auto; padding:16px 14px 40px}
   .overlay.open{display:block}
   /* Toast */
-  #toast{position:fixed; bottom:104px; left:50%; transform:translateX(-50%) translateY(8px); background:var(--card-solid); border:1px solid var(--border2); color:var(--text); padding:12px 22px; border-radius:14px; font-size:14px; font-weight:500; z-index:200; opacity:0; transition:opacity .25s, transform .25s; pointer-events:none; max-width:90%; text-align:center; box-shadow:var(--shadow)}
-  #toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  #toast{position:fixed; bottom:104px; left:50%; transform:translateX(-50%) translateY(10px) scale(.94); background:var(--card-solid); border:1px solid var(--border2); color:var(--text); padding:12px 22px; border-radius:14px; font-size:14px; font-weight:500; z-index:200; opacity:0; transition:opacity .3s, transform .3s cubic-bezier(.34,1.56,.64,1); pointer-events:none; max-width:90%; text-align:center; box-shadow:var(--shadow)}
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0) scale(1)}
   details.sess{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:9px; padding:0 15px; box-shadow:var(--shadow)}
   details.sess summary{padding:12px 0; cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center}
   details.sess summary::-webkit-details-marker{display:none}
@@ -168,8 +168,13 @@
   .empty{color:var(--muted); font-size:13px; text-align:center; padding:22px 0}
   svg.chart{width:100%; height:auto; display:block}
   .banner{background:linear-gradient(135deg, rgba(99,102,241,.22), rgba(168,85,247,.14)); border:1px solid rgba(129,140,248,.4); border-radius:var(--radius); padding:15px; margin-bottom:14px; font-size:13.5px; line-height:1.5}
-  .fade{animation:fadeUp .28s ease both}
-  @keyframes fadeUp{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+  .fade>*{opacity:0; animation:fadeUp .5s cubic-bezier(.2,.9,.3,1) forwards}
+  .fade>*:nth-child(2){animation-delay:.06s}
+  .fade>*:nth-child(3){animation-delay:.12s}
+  .fade>*:nth-child(4){animation-delay:.18s}
+  .fade>*:nth-child(5){animation-delay:.24s}
+  .fade>*:nth-child(n+6){animation-delay:.3s}
+  @keyframes fadeUp{from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none}}
   /* KI-Coach */
   .coach-banner{background:var(--grad); border-radius:16px; padding:13px 16px; color:#fff; margin-bottom:12px; box-shadow:var(--glow)}
   .coach-banner .cb-row{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:3px 0}
@@ -187,6 +192,41 @@
   @keyframes flamePulse{0%,100%{transform:scale(1)} 50%{transform:scale(1.22) rotate(-4deg)}}
   .streakflame{display:inline-block; animation:flamePulse 1.8s ease-in-out infinite}
   @media (prefers-reduced-motion:reduce){ .streakflame{animation:none} }
+  /* ===== Design-Upgrade: lebendig & modern, dezente Micro-Interactions ===== */
+  :root{--shadowh:0 18px 40px -16px rgba(0,0,0,.65), 0 0 0 1px rgba(129,140,248,.16)}
+  html[data-theme="light"]{--shadowh:0 18px 34px -18px rgba(30,41,80,.4)}
+  body::after{content:""; position:fixed; z-index:-1; pointer-events:none; width:540px; height:540px; left:-180px; top:34%; border-radius:50%; background:radial-gradient(circle, var(--glow1), transparent 70%); filter:blur(46px); animation:blobFloat 30s ease-in-out infinite alternate}
+  @keyframes blobFloat{from{transform:translate(0,0) scale(1)} to{transform:translate(56vw,-30vh) scale(1.3)}}
+  @keyframes logoShift{to{background-position:320% 0}}
+  @media (hover:hover){
+    .card:hover{transform:translateY(-2px); border-color:var(--border2); box-shadow:var(--shadowh)}
+    .stat:hover{transform:translateY(-2px); border-color:var(--border2)}
+    .listitem:hover{transform:translateY(-1px); border-color:var(--border2)}
+    .chip:hover{color:var(--text); border-color:var(--accent)}
+    .iconbtn:hover{border-color:var(--accent)}
+    .btn:hover{transform:translateY(-1px)}
+    .glass:hover{transform:translateY(-2px); border-color:var(--accent)}
+  }
+  .btn{position:relative; overflow:hidden}
+  .btn:not(.ghost):not(.danger)::after{content:""; position:absolute; top:0; left:-70%; width:42%; height:100%; background:linear-gradient(100deg, transparent, rgba(255,255,255,.34), transparent); transform:skewX(-18deg); pointer-events:none; transition:left .55s ease}
+  .btn:not(.ghost):not(.danger):hover::after{left:135%}
+  h2::before{content:""; display:inline-block; width:15px; height:3px; border-radius:2px; background:var(--grad); margin-right:7px; vertical-align:2px}
+  .hero .greet{font-size:27px}
+  .ring{filter:drop-shadow(0 8px 18px rgba(139,92,246,.3))}
+  .stat{transition:transform .2s ease, border-color .2s ease}
+  .macro .bar i{animation:barGrow .8s cubic-bezier(.2,.9,.3,1)}
+  @keyframes barGrow{from{width:0}}
+  .fitbar i{animation:barGrow .8s cubic-bezier(.2,.9,.3,1)}
+  .glass.full{animation:glassPop .4s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes glassPop{0%{transform:translateY(-2px) scale(.8)} 60%{transform:translateY(-4px) scale(1.12)} 100%{transform:translateY(-2px) scale(1)}}
+  nav button.on svg{animation:navPop .45s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes navPop{0%{transform:scale(.8)} 55%{transform:scale(1.2)} 100%{transform:scale(1)}}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important}
+    .fade>*{opacity:1; animation:none}
+    body::after{animation:none}
+  }
 </style>
 </head>
 <body>
@@ -924,6 +964,17 @@ function fmtDate(ds){
   if(ds===addDays(todayStr(),1)) return "Morgen";
   return wd+", "+d.getDate()+"."+(d.getMonth()+1)+"."+d.getFullYear();
 }
+function countUp(el, target, dur){
+  if(!el) return;
+  if(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches){ el.textContent = target; return; }
+  dur = dur || 750;
+  const start = performance.now();
+  (function tick(now){
+    const p = Math.min(1, (now-start)/dur), e = 1 - Math.pow(1-p, 3);
+    el.textContent = Math.round(target*e);
+    if(p<1) requestAnimationFrame(tick);
+  })(performance.now());
+}
 function toast(msg){
   const t = document.getElementById("toast");
   t.textContent = msg; t.classList.add("show");
@@ -1007,7 +1058,9 @@ function switchTab(tab){
   }
   renderTab(tab);
   const el = document.getElementById("view-"+tab);
+  clearTimeout(el._fadeT);
   el.classList.remove("fade"); void el.offsetWidth; el.classList.add("fade");
+  el._fadeT = setTimeout(()=>el.classList.remove("fade"), 900);   // Stagger nur beim Tab-Wechsel, nicht bei jedem Re-Render
   window.scrollTo(0,0);
 }
 function renderTab(tab){
@@ -1067,8 +1120,8 @@ function renderDashboard(){
     + '<div class="ring"><svg width="150" height="150" viewBox="0 0 150 150">'
     + '<defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#c084fc"/></linearGradient></defs>'
     + '<circle cx="75" cy="75" r="62" fill="none" stroke="var(--card2)" stroke-width="12"/>'
-    + '<circle cx="75" cy="75" r="62" fill="none" stroke="'+(remaining<0?"var(--red)":"url(#ringGrad)")+'" stroke-width="12" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(C*(1-pct))+'" style="transition:stroke-dashoffset .6s ease"/>'
-    + '</svg><div class="mid"><b>'+r0(remaining)+'</b><span>kcal übrig</span></div></div>'
+    + '<circle id="ring-val" cx="75" cy="75" r="62" fill="none" stroke="'+(remaining<0?"var(--red)":"url(#ringGrad)")+'" stroke-width="12" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+C+'" style="transition:stroke-dashoffset .9s cubic-bezier(.2,.9,.3,1)"/>'
+    + '</svg><div class="mid"><b id="ring-num">'+r0(remaining)+'</b><span>kcal übrig</span></div></div>'
     + '<div class="kstats">'
     + '<div class="row between"><span class="row" style="gap:8px"><i class="dot" style="background:#6366f1"></i><span class="muted">Ziel</span></span><b>'+r0(target)+'</b></div>'
     + '<div class="row between"><span class="row" style="gap:8px"><i class="dot" style="background:#c084fc"></i><span class="muted">Gegessen</span></span><b>'+r0(t.kcal)+'</b></div>'
@@ -1110,6 +1163,11 @@ function renderDashboard(){
     + '</div>';
 
   document.getElementById("view-dashboard").innerHTML = html;
+
+  // Dezente Micro-Interactions: Ring-Sweep & Zahl zählt hoch
+  const rv = document.getElementById("ring-val");
+  if(rv) requestAnimationFrame(()=>requestAnimationFrame(()=>{ rv.style.strokeDashoffset = (C*(1-pct)); }));
+  countUp(document.getElementById("ring-num"), r0(remaining));
 }
 function macroBar(label, val, target){
   const pct = Math.min(100, target>0 ? val/target*100 : 0);
@@ -2494,6 +2552,12 @@ function applyTheme(t){
   localStorage.setItem("fittrack_theme", t);
 }
 function toggleTheme(){
+  const b = document.getElementById("theme-btn");
+  if(b){
+    b.style.transition = "transform .5s cubic-bezier(.34,1.56,.64,1)";
+    b.style.transform = "rotate(360deg)";
+    setTimeout(()=>{ b.style.transition=""; b.style.transform=""; }, 520);
+  }
   applyTheme(document.documentElement.getAttribute("data-theme")==="light" ? "dark" : "light");
 }
 
