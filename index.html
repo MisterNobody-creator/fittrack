@@ -192,6 +192,17 @@
   @keyframes flamePulse{0%,100%{transform:scale(1)} 50%{transform:scale(1.22) rotate(-4deg)}}
   .streakflame{display:inline-block; animation:flamePulse 1.8s ease-in-out infinite}
   @media (prefers-reduced-motion:reduce){ .streakflame{animation:none} }
+  /* Erfolgs-Badges */
+  .badgegrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+  .badge{background:var(--card2); border:1px solid var(--border); border-radius:16px; padding:12px 8px; text-align:center; transition:transform .2s ease, border-color .2s ease}
+  .badge .bicon{width:44px; height:44px; margin:0 auto 7px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:21px; background:var(--grad); box-shadow:var(--glow)}
+  .badge b{display:block; font-size:11.5px; letter-spacing:-.1px}
+  .badge span{font-size:10px; color:var(--muted); display:block; margin-top:2px; line-height:1.35}
+  .badge.locked{opacity:.55}
+  .badge.locked .bicon{background:var(--card2); border:1.5px dashed var(--border2); box-shadow:none; filter:grayscale(1)}
+  @media (hover:hover){ .badge:hover{transform:translateY(-2px); border-color:var(--border2)} }
+  .badge.earned .bicon{animation:badgePop .5s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes badgePop{0%{transform:scale(.7)} 60%{transform:scale(1.12)} 100%{transform:scale(1)}}
   /* ===== Design-Upgrade: lebendig & modern, dezente Micro-Interactions ===== */
   :root{--shadowh:0 18px 40px -16px rgba(0,0,0,.65), 0 0 0 1px rgba(129,140,248,.16)}
   html[data-theme="light"]{--shadowh:0 18px 34px -18px rgba(30,41,80,.4)}
@@ -221,7 +232,7 @@
   @keyframes glassPop{0%{transform:translateY(-2px) scale(.8)} 60%{transform:translateY(-4px) scale(1.12)} 100%{transform:translateY(-2px) scale(1)}}
   nav button.on svg{animation:navPop .45s cubic-bezier(.34,1.56,.64,1)}
   @keyframes navPop{0%{transform:scale(.8)} 55%{transform:scale(1.2)} 100%{transform:scale(1)}}
-  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  button:focus-visible, .glass:focus-visible, [role="button"]:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important}
     .fade>*{opacity:1; animation:none}
@@ -235,7 +246,7 @@
   <div class="logo">Fit<b>Track</b></div>
   <div class="row" style="gap:10px">
     <span class="hdate" id="hdate"></span>
-    <button class="tbtn" id="theme-btn" onclick="toggleTheme()" title="Hell/Dunkel wechseln">☀️</button>
+    <button class="tbtn" id="theme-btn" onclick="toggleTheme()" title="Hell/Dunkel wechseln" aria-label="Design wechseln (hell/dunkel)">☀️</button>
   </div>
 </header>
 
@@ -254,7 +265,7 @@
 
 <div class="overlay" id="workout-overlay"></div>
 
-<nav>
+<nav aria-label="Hauptnavigation">
   <button id="nav-dashboard" onclick="switchTab('dashboard')"><svg viewBox="0 0 24 24"><path d="M3 10.8 12 3.5l9 7.3"/><path d="M5.5 9.5v11h13v-11"/><path d="M9.8 20.5V15h4.4v5.5"/></svg>Start</button>
   <button id="nav-nutrition" onclick="switchTab('nutrition')"><svg viewBox="0 0 24 24"><path d="M12 7.2C11 5.9 9.4 5 7.6 5A5.1 5.1 0 0 0 2.5 10.2c0 4.5 3.4 10.6 6.2 10.6 1.1 0 2.2-.8 3.3-.8s2.2.8 3.3.8c2.8 0 6.2-6.1 6.2-10.6A5.1 5.1 0 0 0 16.4 5c-1.8 0-3.4.9-4.4 2.2Z"/><path d="M12 7.2c0-2.3 1.3-3.7 2.8-4.2"/></svg>Ernährung</button>
   <button id="nav-training" onclick="switchTab('training')"><svg viewBox="0 0 24 24"><rect x="2" y="9.2" width="3.2" height="5.6" rx="1"/><rect x="18.8" y="9.2" width="3.2" height="5.6" rx="1"/><rect x="5.8" y="6.8" width="3.2" height="10.4" rx="1"/><rect x="15" y="6.8" width="3.2" height="10.4" rx="1"/><path d="M9 12h6"/></svg>Training</button>
@@ -263,7 +274,7 @@
 </nav>
 
 <div class="modal-bg" id="modal-bg" onclick="if(event.target===this)closeModal()">
-  <div class="modal" id="modal"></div>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" tabindex="-1"></div>
 </div>
 
 <div id="toast"></div>
@@ -935,7 +946,8 @@ const STORE_KEY = "fittrack_data_v1";
 let state = {
   profile:{gender:"m", age:30, height:180, weight:80, activity:1.4, kcalTarget:2200,
            macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false},
-  customFoods:[], diary:{}, plans:[], sessions:[], weights:[], customExercises:[], active:null
+  customFoods:[], diary:{}, plans:[], sessions:[], weights:[], customExercises:[], active:null,
+  badgesSeen:[]   // additiv: IDs bereits gemeldeter Erfolgs-Badges
 };
 
 function load(){
@@ -945,7 +957,7 @@ function load(){
       state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false}, state.profile); }
   }catch(e){ console.warn("Laden fehlgeschlagen", e); }
 }
-function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); checkNewBadges(); }
 
 /* ---------- Hilfsfunktionen ---------- */
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -1048,6 +1060,49 @@ function wkRow(label, curVal, prevVal, mark){
     + '<span><b>'+curVal+'</b><span class="muted" style="font-size:11px"> · Vorwoche '+prevVal+'</span>'+mark+'</span></div>';
 }
 
+/* ---------- Erfolgs-Badges (abgeleitet aus bestehenden Daten) ---------- */
+function badgeList(){
+  const streak = loggingStreak();
+  const wo = state.sessions.length;
+  let vol = 0; for(const s of state.sessions) vol += sessionVolume(s);
+  let meals = 0, waterDays = 0, steps10k = 0;
+  for(const ds of Object.keys(state.diary)){
+    const d = state.diary[ds];
+    if(d.meals) for(const k of Object.keys(d.meals)) meals += (d.meals[k]||[]).length;
+    if((d.water||0) >= state.profile.waterTarget) waterDays++;
+    if((d.steps||0) >= 10000) steps10k = 1;
+  }
+  const weekCnt = {};
+  for(const s of state.sessions){ const m = mondayOf(s.date); weekCnt[m] = (weekCnt[m]||0)+1; }
+  const bestWeek = Object.keys(weekCnt).length ? Math.max(...Object.values(weekCnt)) : 0;
+  const B = (id,icon,name,desc,cur,goal)=>({id,icon,name,desc,earned:cur>=goal,cur:Math.min(cur,goal),goal});
+  return [
+    B("streak3","🔥","Dranbleiber","3-Tage-Streak",streak,3),
+    B("streak7","⚡","Wochen-Held","7-Tage-Streak",streak,7),
+    B("streak30","🏆","Eisern","30-Tage-Streak",streak,30),
+    B("wo1","🏋️","Los geht's","Erstes Workout",wo,1),
+    B("wo10","💪","Zehnkämpfer","10 Workouts",wo,10),
+    B("wo50","🥇","Gym-Veteran","50 Workouts",wo,50),
+    B("week4","📅","Starke Woche","4 Workouts in einer Woche",bestWeek,4),
+    B("vol10k","🚀","Tonnenschwer","10.000 kg Trainingsvolumen",vol,10000),
+    B("water7","💧","Wasserfest","Wasserziel an 7 Tagen erreicht",waterDays,7),
+    B("steps10k","👟","Stadtwanderer","10.000 Schritte an einem Tag",steps10k,1),
+    B("meals50","🍎","Tagebuch-Profi","50 Mahlzeiten geloggt",meals,50),
+    B("weigh5","⚖️","Messbar besser","5 Gewichts-Einträge",state.weights.length,5)
+  ];
+}
+function checkNewBadges(){
+  try{
+    if(!Array.isArray(state.badgesSeen)) state.badgesSeen = [];
+    const fresh = badgeList().filter(b=>b.earned && !state.badgesSeen.includes(b.id));
+    if(fresh.length){
+      for(const b of fresh) state.badgesSeen.push(b.id);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));   // direkt, kein save() (Rekursion)
+      toast("🏅 Neuer Erfolg: "+fresh[0].name+(fresh.length>1?" +"+(fresh.length-1)+" weitere":"")+"!");
+    }
+  }catch(e){ console.warn("Badge-Check fehlgeschlagen", e); }
+}
+
 /* ---------- Navigation ---------- */
 let currentTab = "dashboard";
 function switchTab(tab){
@@ -1055,6 +1110,7 @@ function switchTab(tab){
   for(const v of ["dashboard","nutrition","training","progress","profile"]){
     document.getElementById("view-"+v).style.display = v===tab ? "" : "none";
     document.getElementById("nav-"+v).classList.toggle("on", v===tab);
+    document.getElementById("nav-"+v).setAttribute("aria-current", v===tab ? "page" : "false");
   }
   renderTab(tab);
   const el = document.getElementById("view-"+tab);
@@ -1071,15 +1127,37 @@ function renderTab(tab){
   if(tab==="profile") renderProfile();
 }
 
-/* ---------- Modal ---------- */
+/* ---------- Modal (mit Fokus-Management für Tastatur & Screenreader) ---------- */
+let _modalPrev = null;
 function openModal(html){
-  document.getElementById("modal").innerHTML = '<button class="mclose" onclick="closeModal()">✕</button>' + html;
+  _modalPrev = document.activeElement;
+  const m = document.getElementById("modal");
+  m.innerHTML = '<button class="mclose" onclick="closeModal()" aria-label="Dialog schließen">✕</button>' + html;
   document.getElementById("modal-bg").classList.add("open");
+  const f = m.querySelector("input, select, textarea, button:not(.mclose)");
+  (f||m).focus({preventScroll:true});
 }
 function closeModal(){
   document.getElementById("modal-bg").classList.remove("open");
   stopBarcodeCamera();
+  if(_modalPrev && document.contains(_modalPrev) && _modalPrev.focus) _modalPrev.focus({preventScroll:true});
+  _modalPrev = null;
 }
+// ESC schließt das Modal, Tab bleibt im Dialog (Fokus-Falle)
+document.addEventListener("keydown", e=>{
+  const bg = document.getElementById("modal-bg");
+  if(!bg || !bg.classList.contains("open")) return;
+  if(e.key==="Escape"){ e.preventDefault(); closeModal(); return; }
+  if(e.key==="Tab"){
+    const els = Array.from(document.getElementById("modal")
+      .querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+      .filter(x=>!x.disabled && x.offsetParent!==null);
+    if(!els.length) return;
+    const first = els[0], last = els[els.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  }
+});
 
 /* ============================================================
    DASHBOARD
@@ -1180,7 +1258,8 @@ function renderWaterGlasses(ds){
   let h = '<div class="water">';
   const n = Math.max(state.profile.waterTarget, d.water||0);
   for(let i=1;i<=n;i++){
-    h += '<div class="glass'+(i<=(d.water||0)?" full":"")+'" onclick="setWater(\''+ds+'\','+i+')"></div>';
+    const full = i<=(d.water||0);
+    h += '<div class="glass'+(full?" full":"")+'" role="button" tabindex="0" aria-pressed="'+full+'" aria-label="Wasserglas '+i+' von '+n+'" onclick="setWater(\''+ds+'\','+i+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();setWater(\''+ds+'\','+i+')}"></div>';
   }
   return h + '</div>';
 }
@@ -1213,9 +1292,9 @@ function renderNutrition(){
   const mt = macroTargets();
 
   let html = '<div class="datebar">'
-    + '<button class="iconbtn" onclick="chgDate(-1)">‹</button>'
+    + '<button class="iconbtn" onclick="chgDate(-1)" aria-label="Vorheriger Tag">‹</button>'
     + '<b>'+fmtDate(ds)+'</b>'
-    + '<button class="iconbtn" onclick="chgDate(1)">›</button></div>';
+    + '<button class="iconbtn" onclick="chgDate(1)" aria-label="Nächster Tag">›</button></div>';
 
   html += '<div class="card"><div class="row between">'
     + '<div><span class="muted" style="font-size:12px">Übrig</span><br><b style="font-size:22px; color:'+((target-t.kcal+t.burned)<0?"var(--red)":"var(--green)")+'">'+r0(target-t.kcal+t.burned)+' kcal</b></div>'
@@ -1237,7 +1316,7 @@ function renderNutrition(){
       html += '<div class="fooditem"><div class="grow"><div>'+esc(e.name)+'</div>'
         + '<span class="muted">'+r0(e.grams)+' g · P '+r1(e.p*e.grams/100)+' / K '+r1(e.c*e.grams/100)+' / F '+r1(e.f*e.grams/100)+'</span></div>'
         + '<b style="font-size:13px">'+r0(entryKcal(e))+'</b>'
-        + '<button class="del" onclick="deleteFoodEntry(\''+mk+'\',\''+e.id+'\')">🗑</button></div>';
+        + '<button class="del" onclick="deleteFoodEntry(\''+mk+'\',\''+e.id+'\')" aria-label="'+esc(e.name)+' löschen">🗑</button></div>';
     }
     html += '<button class="btn ghost full small" style="margin-top:10px" onclick="openFoodModal(\''+mk+'\')">＋ Lebensmittel hinzufügen</button></div>';
   }
@@ -1247,11 +1326,11 @@ function renderNutrition(){
   html += '<div class="card"><div class="meal-head"><h3>🔥 Aktivitäten</h3><span class="muted">'+r0(actSum + (d.steps||0)*KCAL_PER_STEP)+' kcal verbrannt</span></div>';
   html += '<div class="fooditem"><div class="grow"><div>👟 Schritte</div><span class="muted">'+(d.steps||0).toLocaleString("de-DE")+' Schritte</span></div>'
     + '<b style="font-size:13px">'+r0((d.steps||0)*KCAL_PER_STEP)+'</b>'
-    + '<button class="del" style="color:var(--accent)" onclick="openStepsModal(\''+ds+'\')">✎</button></div>';
+    + '<button class="del" style="color:var(--accent)" onclick="openStepsModal(\''+ds+'\')" aria-label="Schritte bearbeiten">✎</button></div>';
   for(const a of d.activities){
     html += '<div class="fooditem"><div class="grow"><div>'+esc(a.name)+'</div><span class="muted">'+a.min+' min</span></div>'
       + '<b style="font-size:13px">'+r0(a.kcal)+'</b>'
-      + '<button class="del" onclick="deleteActivity(\''+a.id+'\')">🗑</button></div>';
+      + '<button class="del" onclick="deleteActivity(\''+a.id+'\')" aria-label="'+esc(a.name)+' löschen">🗑</button></div>';
   }
   html += '<button class="btn ghost full small" style="margin-top:10px" onclick="openActivityModal()">＋ Aktivität hinzufügen</button></div>';
 
@@ -2295,6 +2374,19 @@ function renderProgress(){
   }
   html += '</div>';
 
+  // Erfolgs-Badges
+  const badges = badgeList(), got = badges.filter(b=>b.earned).length;
+  html += '<div class="card"><div class="cardhead"><span class="cicon">🏅</span><h3>Erfolge</h3><span class="muted">'+got+' / '+badges.length+'</span></div><div class="badgegrid">';
+  for(const b of badges){
+    const prog = b.earned ? '' : (b.goal>1 ? ' · '+r0(b.cur).toLocaleString("de-DE")+'/'+b.goal.toLocaleString("de-DE") : '');
+    html += '<div class="badge '+(b.earned?"earned":"locked")+'">'
+      + '<div class="bicon" aria-hidden="true">'+b.icon+'</div><b>'+esc(b.name)+'</b>'
+      + '<span>'+esc(b.desc)+prog+'</span></div>';
+  }
+  html += '</div>'
+    + (got<badges.length ? '<p class="muted" style="margin-top:10px; font-size:12px">Bleib dran – gesperrte Erfolge zeigen deinen Fortschritt.</p>' : '<p class="muted" style="margin-top:10px; font-size:12px">Alle Erfolge freigeschaltet – stark! 🎉</p>')
+    + '</div>';
+
   // Gewicht
   const ws = state.weights.slice().sort((a,b)=>a.date.localeCompare(b.date));
   html += '<div class="card"><div class="row between"><h3>⚖️ Körpergewicht</h3>'
@@ -2312,7 +2404,7 @@ function renderProgress(){
     html += '<details style="margin-top:8px"><summary class="muted" style="cursor:pointer; font-size:13px">Alle Einträge</summary>';
     for(let i=ws.length-1;i>=0;i--){
       html += '<div class="fooditem"><span>'+fmtDate(ws[i].date)+'</span><b style="font-size:13px">'+r1(ws[i].kg)+' kg</b>'
-        + '<button class="del" onclick="deleteWeight(\''+ws[i].date+'\')">🗑</button></div>';
+        + '<button class="del" onclick="deleteWeight(\''+ws[i].date+'\')" aria-label="Gewichtseintrag löschen">🗑</button></div>';
     }
     html += '</details>';
   }
