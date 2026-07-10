@@ -141,6 +141,20 @@
   /* Aktives Workout Leiste */
   #aw-bar{position:fixed; bottom:86px; left:50%; transform:translateX(-50%); width:min(612px, calc(100% - 24px)); background:var(--grad); color:#fff; padding:12px 18px; border-radius:16px; display:none; justify-content:space-between; align-items:center; z-index:49; cursor:pointer; box-shadow:var(--glow); font-size:14px}
   #aw-bar.show{display:flex}
+  /* Pausen-Timer (Rest-Timer) */
+  #rest-bar{position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); width:min(612px, calc(100% - 24px)); background:var(--card-solid); border:1px solid var(--border2); border-radius:18px; padding:12px 16px; display:none; align-items:center; gap:12px; z-index:95; box-shadow:var(--shadowh); opacity:0; transition:opacity .3s, transform .3s cubic-bezier(.34,1.56,.64,1)}
+  #rest-bar.show{display:flex; opacity:1; transform:translateX(-50%) translateY(0)}
+  #rest-bar.done{border-color:var(--green)}
+  #rest-bar .rlabel{font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.6px}
+  #rest-bar .rtime{font-size:26px; font-weight:800; letter-spacing:-.5px; font-variant-numeric:tabular-nums; min-width:74px; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent}
+  #rest-bar .rprog{flex:1; height:6px; background:var(--card2); border-radius:4px; overflow:hidden}
+  #rest-bar .rprog i{display:block; height:100%; border-radius:4px; background:var(--grad); transition:width .95s linear}
+  #rest-bar .radj{width:44px; height:38px; border-radius:11px; background:var(--card2); border:1px solid var(--border); color:var(--text); font-size:12px; font-weight:700; flex-shrink:0}
+  #rest-bar .rskip{height:38px; padding:0 14px; border-radius:11px; background:var(--grad); color:#fff; font-size:13px; font-weight:600; flex-shrink:0; box-shadow:var(--glow)}
+  /* Pausen-Chips im aktiven Workout */
+  .restpick{display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:center; margin-bottom:14px}
+  .restpick .rc{background:var(--card2); border:1px solid var(--border); color:var(--muted); padding:6px 12px; border-radius:16px; font-size:12.5px; font-weight:600; transition:.2s}
+  .restpick .rc.on{background:var(--grad); border-color:transparent; color:#fff; box-shadow:var(--glow)}
   /* Overlay-Ansicht (aktives Workout) */
   .overlay{position:fixed; inset:0; background:var(--bg); z-index:90; display:none; overflow-y:auto; max-width:640px; margin:0 auto; padding:16px 14px 40px}
   .overlay.open{display:block}
@@ -261,6 +275,17 @@
 <div id="aw-bar" onclick="openWorkoutOverlay()">
   <span>🏋️ Workout läuft – <b id="aw-bar-time">0:00</b></span>
   <span>Fortsetzen ›</span>
+</div>
+
+<div id="rest-bar" role="timer" aria-live="polite">
+  <div>
+    <div class="rlabel">Pause</div>
+    <div class="rtime" id="rest-time">0:00</div>
+  </div>
+  <div class="rprog"><i id="rest-prog"></i></div>
+  <button class="radj" onclick="adjustRest(-15)" aria-label="15 Sekunden weniger">−15</button>
+  <button class="radj" onclick="adjustRest(15)" aria-label="15 Sekunden mehr">+15</button>
+  <button class="rskip" onclick="stopRest(true)">Skip</button>
 </div>
 
 <div class="overlay" id="workout-overlay"></div>
@@ -945,7 +970,7 @@ const KCAL_PER_STEP = 0.04;
 const STORE_KEY = "fittrack_data_v1";
 let state = {
   profile:{gender:"m", age:30, height:180, weight:80, activity:1.4, kcalTarget:2200,
-           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false},
+           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90},
   customFoods:[], diary:{}, plans:[], sessions:[], weights:[], customExercises:[], active:null,
   badgesSeen:[]   // additiv: IDs bereits gemeldeter Erfolgs-Badges
 };
@@ -954,7 +979,8 @@ function load(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
     if(raw){ const d = JSON.parse(raw); state = Object.assign(state, d);
-      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false}, state.profile); }
+      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90}, state.profile);
+      if(typeof state.profile.restSec !== "number") state.profile.restSec = 90; }
   }catch(e){ console.warn("Laden fehlgeschlagen", e); }
 }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); checkNewBadges(); }
@@ -2262,6 +2288,74 @@ function updateAwTime(){
 function updateAwBar(){
   document.getElementById("aw-bar").classList.toggle("show", !!state.active && !document.getElementById("workout-overlay").classList.contains("open"));
 }
+
+/* ---------- Pausen-Timer (Rest-Timer) ---------- */
+let restTimer = null, restEnd = 0, restTotal = 0;
+function setRestSec(sec){
+  state.profile.restSec = sec;
+  save();
+  if(sec === 0) stopRest();
+  renderActiveWorkout();
+  toast(sec === 0 ? "Pausen-Timer aus" : "Pause: "+sec+" s");
+}
+function startRest(sec){
+  restTotal = sec;
+  restEnd = Date.now() + sec*1000;
+  const bar = document.getElementById("rest-bar");
+  bar.classList.remove("done");
+  bar.classList.add("show");
+  if(restTimer) clearInterval(restTimer);
+  tickRest();
+  restTimer = setInterval(tickRest, 250);
+}
+function tickRest(){
+  const bar = document.getElementById("rest-bar");
+  const remMs = restEnd - Date.now();
+  const rem = Math.max(0, Math.ceil(remMs/1000));
+  const tEl = document.getElementById("rest-time");
+  if(tEl) tEl.textContent = Math.floor(rem/60)+":"+String(rem%60).padStart(2,"0");
+  const pEl = document.getElementById("rest-prog");
+  if(pEl) pEl.style.width = (restTotal>0 ? Math.max(0, Math.min(100, remMs/(restTotal*1000)*100)) : 0)+"%";
+  if(remMs <= 0){
+    clearInterval(restTimer); restTimer = null;
+    bar.classList.add("done");
+    restBeep();
+    if(navigator.vibrate){ try{ navigator.vibrate([120,60,120]); }catch(e){} }
+    toast("⏱ Pause vorbei – weiter geht's! 💪");
+    setTimeout(()=>{ if(!restTimer) bar.classList.remove("show","done"); }, 2500);
+  }
+}
+function adjustRest(delta){
+  if(!restTimer && !document.getElementById("rest-bar").classList.contains("show")) return;
+  restEnd += delta*1000;
+  restTotal = Math.max(1, restTotal + delta);
+  if(restEnd <= Date.now()){ stopRest(true); return; }
+  if(!restTimer){ document.getElementById("rest-bar").classList.remove("done"); restTimer = setInterval(tickRest, 250); }
+  tickRest();
+}
+function stopRest(manual){
+  if(restTimer){ clearInterval(restTimer); restTimer = null; }
+  const bar = document.getElementById("rest-bar");
+  if(bar) bar.classList.remove("show","done");
+}
+function restBeep(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    const ctx = new AC();
+    [0, 0.18].forEach((t,i)=>{
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = i ? 1046 : 784;
+      o.connect(g); g.connect(ctx.destination);
+      const s = ctx.currentTime + t;
+      g.gain.setValueAtTime(0.0001, s);
+      g.gain.exponentialRampToValueAtTime(0.25, s+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, s+0.15);
+      o.start(s); o.stop(s+0.16);
+    });
+    setTimeout(()=>{ try{ctx.close();}catch(e){} }, 600);
+  }catch(e){}
+}
 function renderActiveWorkout(){
   const aw = state.active;
   if(!aw) return;
@@ -2269,6 +2363,12 @@ function renderActiveWorkout(){
     + '<button class="iconbtn" onclick="closeWorkoutOverlay()">▾</button>'
     + '<div style="text-align:center"><b>'+esc(aw.name)+'</b><br><span class="muted" id="aw-time">0:00</span></div>'
     + '<button class="iconbtn" style="color:var(--red)" onclick="cancelWorkout()">✕</button></div>';
+
+  const rs = state.profile.restSec||0;
+  const restOpts = [[0,"Aus"],[60,"60s"],[90,"90s"],[120,"120s"],[180,"180s"]];
+  h += '<div class="restpick"><span class="rlabel" style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.6px">⏱ Pause</span>'
+    + restOpts.map(o=>'<button class="rc'+(rs===o[0]?" on":"")+'" onclick="setRestSec('+o[0]+')">'+o[1]+'</button>').join("")
+    + '</div>';
 
   aw.entries.forEach((e,ei)=>{
     const last = lastPerf(e.exId);
@@ -2300,6 +2400,7 @@ function awToggleDone(ei, si){
   const st = state.active.entries[ei].sets[si];
   st.done = !st.done;
   save(); renderActiveWorkout();
+  if(st.done && (state.profile.restSec||0) > 0) startRest(state.profile.restSec);
 }
 function awAddSet(ei){
   const sets = state.active.entries[ei].sets;
@@ -2338,6 +2439,7 @@ function finishWorkout(){
   state.active = null;
   save();
   if(awTimer){ clearInterval(awTimer); awTimer = null; }
+  stopRest();
   document.getElementById("workout-overlay").classList.remove("open");
   updateAwBar();
   renderTab(currentTab);
@@ -2349,6 +2451,7 @@ function cancelWorkout(silent){
   state.active = null;
   save();
   if(awTimer){ clearInterval(awTimer); awTimer = null; }
+  stopRest();
   document.getElementById("workout-overlay").classList.remove("open");
   updateAwBar();
   renderTab(currentTab);
@@ -2439,6 +2542,8 @@ function renderProgress(){
     + '<div class="row" style="margin-top:10px">'
     + '<button class="btn ghost grow" onclick="exportData()">Export (JSON)</button>'
     + '<button class="btn ghost grow" onclick="document.getElementById(\'import-file\').click()">Import</button></div>'
+    + '<button class="btn ghost full" style="margin-top:9px" onclick="exportDiaryCSV()">📄 Ernährungstagebuch als CSV</button>'
+    + '<p class="muted" style="font-size:11.5px; margin-top:7px">CSV lässt sich in Excel oder Google Sheets öffnen.</p>'
     + '<input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)"></div>';
 
   document.getElementById("view-progress").innerHTML = html;
@@ -2527,6 +2632,31 @@ function exportData(){
   a.click();
   URL.revokeObjectURL(a.href);
   toast("Backup heruntergeladen ✓");
+}
+function exportDiaryCSV(){
+  const csvCell = v => { const s = String(v==null?"":v).replace(/"/g,'""'); return /[";\n]/.test(s) ? '"'+s+'"' : s; };
+  const rows = [["Datum","Mahlzeit","Lebensmittel","Menge (g/ml)","kcal","Eiweiss (g)","KH (g)","Fett (g)"]];
+  const dates = Object.keys(state.diary).sort();
+  for(const ds of dates){
+    const d = state.diary[ds];
+    if(!d || !d.meals) continue;
+    for(const mk of Object.keys(MEALS)){
+      for(const e of (d.meals[mk]||[])){
+        const g = e.grams||0;
+        rows.push([ds, MEALS[mk], e.name, g,
+          r0(e.kcal*g/100), r1(e.p*g/100), r1(e.c*g/100), r1(e.f*g/100)]);
+      }
+    }
+  }
+  if(rows.length === 1){ toast("Noch keine Mahlzeiten zum Exportieren"); return; }
+  const csv = "﻿" + rows.map(r=>r.map(csvCell).join(";")).join("\r\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "fittrack-ernaehrung-"+todayStr()+".csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("CSV heruntergeladen ✓ ("+(rows.length-1)+" Einträge)");
 }
 function importData(input){
   const file = input.files[0];
