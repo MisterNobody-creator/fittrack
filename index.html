@@ -3083,7 +3083,7 @@ async function aiAnalyze(){
       })
     });
     if(!res.ok){
-      if(res.status===401 || res.status===403) throw new Error("API-Schlüssel ungültig oder abgelaufen – über „Key ändern" neu eingeben.");
+      if(res.status===401 || res.status===403) throw new Error("API-Schlüssel ungültig oder abgelaufen – über ‚Key ändern' neu eingeben.");
       if(res.status===429) throw new Error("Zu viele Anfragen – bitte kurz warten und erneut versuchen.");
       throw new Error("KI-Dienst nicht erreichbar (Fehler "+res.status+").");
     }
