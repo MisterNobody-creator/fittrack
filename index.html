@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>FitTrack – Ernährung & Training</title>
+<!-- PWA-Basics: Beschreibung, Theme-Farbe, Icons, Manifest (wird per JS als Blob gesetzt) -->
+<meta name="description" content="FitTrack – dein persönlicher Ernährungs- und Trainings-Tracker. Kalorien, Makros, Workouts, Wasser und Fortschritt – alles lokal in deinem Browser.">
+<meta name="theme-color" id="meta-theme" content="#0b0e16">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FitTrack">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%23a855f7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Cg fill='%23fff'%3E%3Crect x='30' y='45.5' width='40' height='9' rx='4'/%3E%3Crect x='26' y='30' width='9' height='40' rx='4.2'/%3E%3Crect x='65' y='30' width='9' height='40' rx='4.2'/%3E%3Crect x='17' y='36' width='8' height='28' rx='3.8'/%3E%3Crect x='75' y='36' width='8' height='28' rx='3.8'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="apple-touch-icon" id="apple-icon">
+<link rel="manifest" id="manifest-link">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -180,6 +190,12 @@
   .pick-item:hover{background:var(--card2)}
   .pick-item .sub{font-size:12px; color:var(--muted)}
   .empty{color:var(--muted); font-size:13px; text-align:center; padding:22px 0}
+  /* Schönere Leerzustände */
+  .emptybox{display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; padding:26px 14px; margin:6px 0; border:1.5px dashed var(--border2); border-radius:16px}
+  .emptybox .ebi{width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; background:linear-gradient(135deg, rgba(99,102,241,.16), rgba(168,85,247,.14)); border:1px solid var(--border); margin-bottom:3px; animation:ebiFloat 3.4s ease-in-out infinite}
+  .emptybox b{font-size:14px; letter-spacing:-.2px}
+  .emptybox .ebs{color:var(--muted); font-size:12.5px; max-width:300px; line-height:1.45}
+  @keyframes ebiFloat{0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)}}
   svg.chart{width:100%; height:auto; display:block}
   .banner{background:linear-gradient(135deg, rgba(99,102,241,.22), rgba(168,85,247,.14)); border:1px solid rgba(129,140,248,.4); border-radius:var(--radius); padding:15px; margin-bottom:14px; font-size:13.5px; line-height:1.5}
   .fade>*{opacity:0; animation:fadeUp .5s cubic-bezier(.2,.9,.3,1) forwards}
@@ -2022,7 +2038,7 @@ function renderTrainingBody(){
             + '<button class="btn small" onclick="startWorkoutFromPlan(\''+p.id+'\',false)">Start</button></div>';
         }
       } else {
-        h += '<p class="empty">Noch keine eigenen Pläne – unter „Pläne“ erstellen oder eine Vorlage übernehmen.</p>';
+        h += emptyState('📋','Noch keine eigenen Pläne','Erstelle unter „Pläne“ deinen eigenen Plan oder starte unten direkt mit einer Vorlage.');
       }
       for(const p of PRESET_PLANS){
         h += '<div class="row between" style="padding:7px 0; border-top:1px solid var(--border)"><div><b style="font-size:14px">'+esc(p.name)+'</b> <span class="muted">(Vorlage)</span><br><span class="muted">'+p.items.length+' Übungen</span></div>'
@@ -2040,7 +2056,7 @@ function renderTrainingBody(){
   }
   else if(trainingSub==="plans"){
     let h = '<button class="btn full" onclick="openPlanEditor(null)">＋ Neuen Plan erstellen</button><h2>Meine Pläne</h2>';
-    if(!state.plans.length) h += '<p class="empty">Noch keine eigenen Pläne.</p>';
+    if(!state.plans.length) h += emptyState('📋','Noch keine eigenen Pläne','Tippe oben auf „＋ Neuen Plan erstellen“ oder übernimm unten eine Vorlage.');
     for(const p of state.plans){
       h += '<div class="listitem"><div class="info grow"><b>'+esc(p.name)+'</b><span>'+p.items.map(i=>{const e=getExercise(i.exId); return e?e.name:"?";}).join(", ")+'</span></div>'
         + '<button class="btn small ghost" onclick="openPlanEditor(\''+p.id+'\')">✎</button>'
@@ -2056,7 +2072,7 @@ function renderTrainingBody(){
   else if(trainingSub==="history"){
     let h = "";
     const sess = state.sessions.slice().sort((a,b)=>b.date.localeCompare(a.date) || (b.start||0)-(a.start||0));
-    if(!sess.length) h = '<p class="empty">Noch keine Workouts absolviert.</p>';
+    if(!sess.length) h = emptyState('🏋️','Noch keine Workouts absolviert','Starte dein erstes Workout im Reiter „Workout“ – hier erscheint danach dein Trainings-Verlauf.');
     for(const s of sess){
       h += '<details class="sess"><summary><div><b style="font-size:14px">'+esc(s.name)+'</b><br><span class="muted" style="font-size:12px">'+fmtDate(s.date)+' · '+(s.durationMin||0)+' min · '+r0(sessionVolume(s)).toLocaleString("de-DE")+' kg Volumen</span></div><span class="muted">▾</span></summary><div class="body">';
       for(const e of s.entries){
@@ -2468,7 +2484,7 @@ function renderProgress(){
   const cur = weekStats(thisMon), prev = weekStats(addDays(thisMon,-7));
   html += '<div class="card"><div class="cardhead"><span class="cicon">📅</span><h3>Wochenrückblick</h3><span class="muted">vs. Vorwoche</span></div>';
   if(cur.days===0 && cur.workouts===0 && prev.days===0 && prev.workouts===0){
-    html += '<p class="empty">Noch keine Daten – trage Mahlzeiten ein oder starte ein Workout.</p>';
+    html += emptyState('📅','Noch keine Daten diese Woche','Trage Mahlzeiten ein oder starte ein Workout – hier erscheint dann dein Vergleich zur Vorwoche.');
   } else {
     html += wkRow("Ø Kalorien/Tag", r0(cur.avgKcal)+" kcal", r0(prev.avgKcal)+" kcal", trendMark(cur.avgKcal, prev.avgKcal, state.profile.goal==="abnehmen"))
       + wkRow("Workouts", cur.workouts, prev.workouts, trendMark(cur.workouts, prev.workouts, false))
@@ -2501,7 +2517,7 @@ function renderProgress(){
   } else if(ws.length===1){
     html += '<p class="muted">Aktuell: <b style="color:var(--text)">'+r1(ws[0].kg)+' kg</b> – trage regelmäßig ein, um den Verlauf zu sehen.</p>';
   } else {
-    html += '<p class="empty">Noch kein Gewicht eingetragen.</p>';
+    html += emptyState('⚖️','Noch kein Gewicht eingetragen','Tippe auf „＋ Eintragen“ – ab zwei Einträgen siehst du hier deinen Verlauf als Kurve.');
   }
   if(ws.length){
     html += '<details style="margin-top:8px"><summary class="muted" style="cursor:pointer; font-size:13px">Alle Einträge</summary>';
@@ -2771,6 +2787,8 @@ function applyTheme(t){
   document.documentElement.setAttribute("data-theme", t);
   const b = document.getElementById("theme-btn");
   if(b) b.textContent = t==="light" ? "🌙" : "☀️";
+  const mt = document.getElementById("meta-theme");
+  if(mt) mt.setAttribute("content", t==="light" ? "#eef1f7" : "#0b0e16");
   localStorage.setItem("fittrack_theme", t);
 }
 function toggleTheme(){
@@ -2782,6 +2800,61 @@ function toggleTheme(){
   }
   applyTheme(document.documentElement.getAttribute("data-theme")==="light" ? "dark" : "light");
 }
+
+/* ---------- Schönere Leerzustände ---------- */
+function emptyState(icon, title, sub){
+  return '<div class="emptybox"><span class="ebi" aria-hidden="true">'+icon+'</span><b>'+title+'</b>'
+    + (sub ? '<span class="ebs">'+sub+'</span>' : '') + '</div>';
+}
+
+/* ---------- PWA-Basics: App-Icons per Canvas (kein Base64 nötig, App bleibt eine Datei) ---------- */
+function makeAppIcon(size){
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const x = c.getContext("2d"), s = size/100;
+  function rrect(px,py,w,h,r){
+    px*=s; py*=s; w*=s; h*=s; r*=s;
+    x.beginPath();
+    x.moveTo(px+r,py);
+    x.arcTo(px+w,py,px+w,py+h,r);
+    x.arcTo(px+w,py+h,px,py+h,r);
+    x.arcTo(px,py+h,px,py,r);
+    x.arcTo(px,py,px+w,py,r);
+    x.closePath(); x.fill();
+  }
+  const g = x.createLinearGradient(0,0,size,size);
+  g.addColorStop(0,"#6366f1"); g.addColorStop(1,"#a855f7");
+  x.fillStyle = g; rrect(0,0,100,100,22.5);
+  x.fillStyle = "#fff";
+  rrect(30,45.5,40,9,4);   /* Hantel-Stange */
+  rrect(26,30,9,40,4.2);   /* innere Scheiben */
+  rrect(65,30,9,40,4.2);
+  rrect(17,36,8,28,3.8);   /* äußere Scheiben */
+  rrect(75,36,8,28,3.8);
+  return c.toDataURL("image/png");
+}
+(function setupManifest(){
+  try{
+    const ap = document.getElementById("apple-icon");
+    if(ap) ap.href = makeAppIcon(180);
+    const mf = {
+      name: "FitTrack – Ernährung & Training",
+      short_name: "FitTrack",
+      description: "Kalorien, Makros, Workouts, Wasser und Fortschritt – alles lokal in deinem Browser.",
+      start_url: ".",
+      scope: ".",
+      display: "standalone",
+      background_color: "#0b0e16",
+      theme_color: "#0b0e16",
+      lang: "de",
+      icons: [
+        {src: makeAppIcon(192), sizes: "192x192", type: "image/png", purpose: "any"},
+        {src: makeAppIcon(512), sizes: "512x512", type: "image/png", purpose: "any"}
+      ]
+    };
+    const link = document.getElementById("manifest-link");
+    if(link) link.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], {type: "application/manifest+json"}));
+  }catch(e){ /* Manifest ist optional – die App funktioniert auch ohne */ }
+})();
 
 /* ---------- Start ---------- */
 load();
