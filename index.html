@@ -118,6 +118,22 @@
   .fooditem .del:hover{opacity:1}
   .datebar{display:flex; align-items:center; justify-content:space-between; margin:2px 0 14px; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:6px 8px; box-shadow:var(--shadow)}
   .datebar b{font-size:15px; letter-spacing:-.2px}
+  /* Wochen-Datumsstreifen (Ernährung) */
+  .weekstrip{display:flex; gap:6px; margin:0 0 14px}
+  .weekstrip button{flex:1; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:8px 0 7px; display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--text); box-shadow:var(--shadow); transition:transform .15s, border-color .2s, background .2s}
+  .weekstrip button:active{transform:scale(.94)}
+  .weekstrip .wd{font-size:9.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.4px}
+  .weekstrip .dn{font-size:14px; font-weight:700; letter-spacing:-.2px}
+  .weekstrip .wdot{width:6px; height:6px; border-radius:50%; border:1.5px solid var(--border2); background:transparent}
+  .weekstrip .wdot.log{background:var(--green); border-color:transparent}
+  .weekstrip .wdot.over{background:var(--red); border-color:transparent}
+  .weekstrip button.tdy{border-color:var(--accent)}
+  .weekstrip button.sel{background:var(--grad); border-color:transparent; color:#fff; box-shadow:var(--glow)}
+  .weekstrip button.sel .wd{color:rgba(255,255,255,.85)}
+  .weekstrip button.sel .wdot{border-color:rgba(255,255,255,.7)}
+  .weekstrip button.sel .wdot.log, .weekstrip button.sel .wdot.over{background:#fff; border-color:transparent}
+  .weekstrip button.fut{opacity:.45}
+  @media (hover:hover){ .weekstrip button:not(.sel):hover{border-color:var(--accent)} }
   /* Chips */
   .chips{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px}
   .chip{background:var(--card2); border:1px solid var(--border); color:var(--muted); padding:7px 14px; border-radius:20px; font-size:13px; font-weight:500; transition:.2s}
@@ -1368,8 +1384,11 @@ function renderNutrition(){
 
   let html = '<div class="datebar">'
     + '<button class="iconbtn" onclick="chgDate(-1)" aria-label="Vorheriger Tag">‹</button>'
-    + '<b>'+fmtDate(ds)+'</b>'
-    + '<button class="iconbtn" onclick="chgDate(1)" aria-label="Nächster Tag">›</button></div>';
+    + '<span class="row" style="gap:9px"><b>'+fmtDate(ds)+'</b>'
+    + (ds!==todayStr() ? '<button class="chip" style="padding:5px 12px" onclick="gotoDate(todayStr())">Heute</button>' : '')
+    + '</span><button class="iconbtn" onclick="chgDate(1)" aria-label="Nächster Tag">›</button></div>';
+
+  html += weekStripHtml(ds);
 
   html += '<div class="card"><div class="row between">'
     + '<div><span class="muted" style="font-size:12px">Übrig</span><br><b style="font-size:22px; color:'+((target-t.kcal+t.burned)<0?"var(--red)":"var(--green)")+'">'+r0(target-t.kcal+t.burned)+' kcal</b></div>'
@@ -1395,8 +1414,10 @@ function renderNutrition(){
         + '<b style="font-size:13px">'+r0(entryKcal(e))+'</b>'
         + '<button class="del" onclick="deleteFoodEntry(\''+mk+'\',\''+e.id+'\')" aria-label="'+esc(e.name)+' löschen">🗑</button></div>';
     }
+    const yList = yesterdayMeal(ds, mk);
     html += '<div class="row" style="margin-top:10px">'
       + '<button class="btn ghost grow small" onclick="openFoodModal(\''+mk+'\')">＋ Lebensmittel hinzufügen</button>'
+      + (!entries.length && yList.length ? '<button class="btn ghost small" title="Gleiche Mahlzeit wie am Vortag eintragen" aria-label="'+MEALS[mk]+' vom Vortag übernehmen" onclick="copyYesterdayMeal(\''+mk+'\')">⧉ Gestern</button>' : '')
       + (entries.length ? '<button class="btn ghost small" title="Diese Mahlzeit als Rezept speichern" aria-label="'+MEALS[mk]+' als Rezept speichern" onclick="saveMealAsRecipe(\''+mk+'\')">🧾</button>' : '')
       + '</div></div>';
   }
@@ -1421,6 +1442,47 @@ function renderNutrition(){
   document.getElementById("view-nutrition").innerHTML = html;
 }
 function chgDate(n){ nutriDate = addDays(nutriDate, n); renderNutrition(); }
+function gotoDate(ds){ nutriDate = ds; renderNutrition(); }
+
+/* ---------- Wochen-Datumsstreifen: 7 Tage antippen statt blättern ---------- */
+function weekStripHtml(ds){
+  const mon = mondayOf(ds), today = todayStr(), target = state.profile.kcalTarget;
+  const WD = ["Mo","Di","Mi","Do","Fr","Sa","So"];
+  let h = '<div class="weekstrip" aria-label="Tage dieser Woche">';
+  for(let i=0;i<7;i++){
+    const wds = addDays(mon,i);
+    // bewusst ohne getDay(): kein leerer Tag im Tagebuch anlegen
+    const dd = state.diary[wds];
+    let k = 0, has = false;
+    if(dd && dd.meals) for(const m of Object.keys(dd.meals)) for(const e of (dd.meals[m]||[])){ k += e.kcal*e.grams/100; has = true; }
+    const dot = !has ? "" : (k > target ? " over" : " log");
+    const cls = (wds===ds ? " sel" : "") + (wds===today ? " tdy" : "") + (wds>today ? " fut" : "");
+    h += '<button class="'+cls.trim()+'" onclick="gotoDate(\''+wds+'\')" aria-label="'+fmtDate(wds)+(has?', '+r0(k)+' kcal geloggt':'')+'" '+(wds===ds?'aria-current="date"':'')+'>'
+      + '<span class="wd">'+WD[i]+'</span><span class="dn">'+parseInt(wds.slice(8),10)+'</span><span class="wdot'+dot+'"></span></button>';
+  }
+  return h + '</div>';
+}
+
+/* ---------- Mahlzeit vom Vortag übernehmen ---------- */
+function yesterdayMeal(ds, mk){
+  const prev = state.diary[addDays(ds,-1)];   // bewusst ohne getDay(): nichts anlegen
+  return (prev && prev.meals && prev.meals[mk]) ? prev.meals[mk] : [];
+}
+function copyYesterdayMeal(mk){
+  const ds = nutriDate, src = yesterdayMeal(ds, mk);
+  if(!src.length){ toast("Am Vortag war "+MEALS[mk]+" leer."); return; }
+  const list = getDay(ds).meals[mk];
+  const added = src.map(e=>Object.assign({}, e, {id:uid()}));
+  for(const e of added) list.push(e);
+  save(); renderNutrition();
+  toastUndo(added.length+(added.length===1?" Eintrag":" Einträge")+" vom Vortag übernommen", function(){
+    const l = getDay(ds).meals[mk];
+    for(const a of added){ const i = l.findIndex(x=>x.id===a.id); if(i>=0) l.splice(i,1); }
+    save();
+    if(currentTab==="nutrition") renderNutrition();
+    if(currentTab==="dashboard") renderDashboard();
+  });
+}
 function deleteFoodEntry(meal, id){
   const ds = nutriDate, list = getDay(ds).meals[meal];
   const idx = list.findIndex(e=>e.id===id);
