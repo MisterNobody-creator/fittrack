@@ -2195,7 +2195,7 @@ function renderTrainingBody(){
     for(const s of sess){
       h += '<details class="sess"><summary><div><b style="font-size:14px">'+esc(s.name)+'</b><br><span class="muted" style="font-size:12px">'+fmtDate(s.date)+' · '+(s.durationMin||0)+' min · '+r0(sessionVolume(s)).toLocaleString("de-DE")+' kg Volumen</span></div><span class="muted">▾</span></summary><div class="body">';
       for(const e of s.entries){
-        h += '<div class="sexc"><b>'+esc(e.name)+'</b><div class="st">'+e.sets.map(st=>r1(st.kg)+" kg × "+st.reps).join("  ·  ")+'</div></div>';
+        h += '<div class="sexc"><b style="cursor:pointer" onclick="openExerciseDetail(\''+esc(e.exId)+'\')" title="Fortschritt anzeigen">'+esc(e.name)+' <span class="muted" style="font-size:11px">📈</span></b><div class="st">'+e.sets.map(st=>r1(st.kg)+" kg × "+st.reps).join("  ·  ")+'</div></div>';
       }
       h += '<button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></details>';
     }
@@ -2222,15 +2222,70 @@ function renderExList(){
     + '<div class="info"><b>'+esc(e.name)+'</b><span>'+esc(e.muscle)+' · '+esc(e.equip)+'</span></div><span class="muted">ℹ️</span></div>').join("")
     : '<p class="empty">Keine Übung gefunden.</p>';
 }
+/* ---------- Übungs-Fortschritt & persönliche Rekorde ---------- */
+function e1rm(kg, reps){ if(!kg || !reps) return 0; return reps===1 ? kg : kg*(1+reps/30); }
+function exHistory(exId){
+  const out = [];
+  const sess = state.sessions.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.start||0)-(b.start||0));
+  for(const s of sess){
+    const e = s.entries.find(x=>x.exId===exId);
+    if(!e || !e.sets.length) continue;
+    let bestKg=0, bestReps=0, best1=0, vol=0;
+    for(const st of e.sets){
+      vol += (st.kg||0)*(st.reps||0);
+      const o = e1rm(st.kg||0, st.reps||0);
+      if(o>best1) best1 = o;
+      if((st.kg||0)>bestKg || ((st.kg||0)===bestKg && (st.reps||0)>bestReps)){ bestKg = st.kg||0; bestReps = st.reps||0; }
+    }
+    out.push({date:s.date, bestKg, bestReps, e1rm:best1, vol, sets:e.sets});
+  }
+  return out;
+}
+function detectPRs(entries){
+  const prs = [];
+  for(const e of entries){
+    const hist = exHistory(e.exId);
+    if(!hist.length) continue;
+    const prevKg = Math.max(...hist.map(h=>h.bestKg));
+    const prev1  = Math.max(...hist.map(h=>h.e1rm));
+    if(prevKg<=0) continue;
+    let curKg=0, curReps=0, cur1=0;
+    for(const st of e.sets){
+      const o = e1rm(st.kg||0, st.reps||0);
+      if(o>cur1) cur1 = o;
+      if((st.kg||0)>curKg){ curKg = st.kg||0; curReps = st.reps||0; }
+    }
+    if(curKg>prevKg) prs.push(e.name+" "+r1(curKg)+" kg × "+curReps);
+    else if(cur1>prev1+0.05) prs.push(e.name+" ≈"+r0(cur1)+" kg (1RM)");
+  }
+  return prs;
+}
 function openExerciseDetail(id){
   const e = getExercise(id);
   if(!e) return;
-  const last = lastPerf(id);
-  openModal('<h3>'+esc(e.name)+'</h3>'
-    + '<p class="muted">'+esc(e.muscle)+' · '+esc(e.equip)+'</p>'
-    + '<div class="card" style="margin-top:12px"><b style="font-size:13px">Ausführung</b><p style="font-size:14px; margin-top:6px; line-height:1.5">'+esc(e.desc)+'</p></div>'
-    + (last?'<p class="muted">Letzte Leistung: '+last+'</p>':'')
-    + (e.custom?'<button class="btn danger full" style="margin-top:10px" onclick="deleteCustomExercise(\''+e.id+'\')">Übung löschen</button>':''));
+  const hist = exHistory(id);
+  let h = '<h3>'+esc(e.name)+'</h3>'
+    + '<p class="muted">'+esc(e.muscle)+' · '+esc(e.equip)+'</p>';
+  if(hist.length){
+    const bk = hist.reduce((a,b)=>(b.bestKg>a.bestKg || (b.bestKg===a.bestKg && b.bestReps>a.bestReps))?b:a);
+    const b1 = Math.max(...hist.map(x=>x.e1rm));
+    const vol = hist.reduce((s,x)=>s+x.vol,0);
+    h += '<div class="statgrid" style="margin:12px 0 0">'
+      + '<div class="stat"><b>'+r1(bk.bestKg)+' kg × '+bk.bestReps+'</b><span>🏆 Bester Satz</span></div>'
+      + '<div class="stat"><b>'+(b1>0?"≈"+r0(b1)+" kg":"–")+'</b><span>Geschätztes 1RM</span></div>'
+      + '<div class="stat"><b>'+hist.length+'</b><span>Einheiten</span></div>'
+      + '<div class="stat"><b>'+r0(vol).toLocaleString("de-DE")+' kg</b><span>Gesamtvolumen</span></div></div>';
+    const pts = hist.filter(x=>x.e1rm>0).slice(-12).map(x=>({x:x.date, y:r1(x.e1rm)}));
+    if(pts.length>=2) h += '<h2 style="margin-top:16px">Kraft-Verlauf <span class="muted" style="font-weight:400; font-size:12px">geschätztes 1RM</span></h2>' + lineChart(pts);
+    h += '<h2 style="margin-top:14px">Letzte Einheiten</h2>';
+    for(const x of hist.slice(-3).reverse()){
+      h += '<div class="sexc" style="padding:7px 0; border-top:1px solid var(--border)"><b style="font-size:13px">'+fmtDate(x.date)+'</b>'
+        + '<div class="st muted" style="font-size:13px">'+x.sets.map(st=>r1(st.kg)+" kg × "+st.reps).join("  ·  ")+'</div></div>';
+    }
+  }
+  h += '<div class="card" style="margin-top:12px"><b style="font-size:13px">Ausführung</b><p style="font-size:14px; margin-top:6px; line-height:1.5">'+esc(e.desc)+'</p></div>'
+    + (e.custom?'<button class="btn danger full" style="margin-top:10px" onclick="deleteCustomExercise(\''+e.id+'\')">Übung löschen</button>':'');
+  openModal(h);
 }
 function openCustomExerciseModal(){
   openModal('<h3>Eigene Übung</h3>'
@@ -2574,6 +2629,7 @@ function finishWorkout(){
     return;
   }
   const durationMin = Math.max(1, Math.round((Date.now()-aw.start)/60000));
+  const prs = detectPRs(entries); // vor dem Speichern: Vergleich nur gegen bisherige Historie
   const sess = {id:"s-"+uid(), date:todayStr(), name:aw.name, start:aw.start, durationMin, entries};
   state.sessions.push(sess);
   state.active = null;
@@ -2585,6 +2641,11 @@ function finishWorkout(){
   renderTab(currentTab);
   const vol = r0(sessionVolume(sess)).toLocaleString("de-DE");
   toast("💪 Workout gespeichert: "+entries.length+" Übungen, "+vol+" kg Volumen");
+  if(prs.length){
+    const msg = prs.length===1 ? "🏆 Neuer Rekord: "+prs[0]
+      : "🏆 "+prs.length+" neue Rekorde: "+prs.slice(0,2).join(" · ")+(prs.length>2?" …":"");
+    setTimeout(()=>toast(msg), 2500);
+  }
 }
 function cancelWorkout(silent){
   if(!silent && !confirm("Workout wirklich abbrechen? Eingetragene Sätze gehen verloren.")) return;
