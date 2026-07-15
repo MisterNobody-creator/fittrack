@@ -3485,17 +3485,25 @@ const MOTION_HERO   = {url:"https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3
                        poster:"https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_100228_a269e990-aece-4ada-b845-1f94c739671c.png"};
 let _motionPlayers = [], _heroPlayer = null, heroMotionEl = null;
 
-function makeLoopPlayer(wrap, media){
+async function makeLoopPlayer(wrap, media){
   const FADE = 1.1;                                     // Sekunden Ueberblendung
   const vids = [];
   for(let i=0;i<2;i++){
     const v = document.createElement("video");
     v.muted = true; v.playsInline = true; v.preload = "auto";
     v.setAttribute("playsinline",""); v.setAttribute("muted","");
-    v.src = media.url; v.poster = media.poster;
+    v.poster = media.poster;                            // bis zum Laden zeigt das Poster das statische Bild
     v.setAttribute("aria-hidden","true"); v.tabIndex = -1;
     wrap.appendChild(v); vids.push(v);
   }
+  vids[0].classList.add("on");
+  let blobUrl;
+  try{                                                  // Video per fetch laden: EIN Download, beide
+    const res = await fetch(media.url);                 // Crossfade-Elemente teilen sich den Blob -> der
+    if(!res.ok) throw new Error("HTTP "+res.status);    // Loop-Uebergang ruckelt nie durch Nachladen
+    blobUrl = URL.createObjectURL(await res.blob());
+  }catch(e){ return null; }                             // Fallback: statisches Posterbild bleibt stehen
+  vids.forEach(function(v){ v.src = blobUrl; });
   let act = 0, switching = false;
   function tryPlay(v){ const p = v.play(); if(p && p.catch) p.catch(function(){}); }
   function swap(){                                      // weicher Crossfade zum zweiten Video
@@ -3512,7 +3520,7 @@ function makeLoopPlayer(wrap, media){
     });
     v.addEventListener("ended", function(){ if(v===vids[act]) swap(); });  // Sicherheitsnetz
   });
-  vids[0].classList.add("on"); tryPlay(vids[0]);
+  tryPlay(vids[0]);
   const player = {
     vids,
     resume(){ tryPlay(vids[act]); if(switching) tryPlay(vids[1-act]); },
@@ -3543,7 +3551,7 @@ function setupMotion(){
     // 2) Hero-Animation am Dashboard (persistentes Element)
     heroMotionEl = document.createElement("div");
     heroMotionEl.id = "hero-motion"; heroMotionEl.setAttribute("aria-hidden","true");
-    _heroPlayer = makeLoopPlayer(heroMotionEl, MOTION_HERO);
+    makeLoopPlayer(heroMotionEl, MOTION_HERO).then(function(p){ _heroPlayer = p; if(p) p.resume(); });
     const shade = document.createElement("div"); shade.className = "hm-shade";
     heroMotionEl.appendChild(shade);                    // Verlauf liegt UEBER den Videos
     attachHeroMotion();
