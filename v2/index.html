@@ -368,6 +368,21 @@
   h2{font-size:19px}
   .btn{border-radius:999px}
   input,select,textarea{border-radius:14px}
+
+  /* ===== Higgsfield-Motion: nahtlos geloopte Video-Hintergruende (Crossfade statt hartem Neustart) ===== */
+  #bg-motion{position:fixed; inset:0; z-index:-2; pointer-events:none; overflow:hidden; display:none}
+  #bg-motion video, #hero-motion video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 1.1s linear}
+  #bg-motion video.on, #hero-motion video.on{opacity:1}
+  html[data-theme="dark"].motion #bg-motion{display:block}
+  html.motion body{background:transparent}
+  html[data-theme="dark"].motion body::before{background:linear-gradient(180deg, rgba(11,14,22,.5) 0%, rgba(11,14,22,.74) 45%, rgba(11,14,22,.9) 80%, rgba(11,14,22,.96) 100%)}
+  #hero-motion{position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; border-radius:inherit}
+  #hero-motion video{object-position:right center}
+  #hero-motion .hm-shade{position:absolute; inset:0; background:linear-gradient(100deg, rgba(11,14,22,.88) 34%, rgba(11,14,22,.42) 62%, rgba(11,14,22,.05) 100%)}
+  html[data-theme="light"] #hero-motion .hm-shade{background:linear-gradient(100deg, rgba(238,241,247,.94) 36%, rgba(238,241,247,.55) 62%, rgba(238,241,247,.08) 100%)}
+  html.motion #view-dashboard .hero{background:var(--card-solid)}
+  html.motion #view-dashboard .hero::before{position:relative; z-index:1}
+  html.motion #view-dashboard .hero>*:not(#hero-motion){position:relative; z-index:1}
 </style>
 </head>
 <body>
@@ -1429,6 +1444,7 @@ function renderDashboard(){
   const rv = document.getElementById("ring-val");
   if(rv) requestAnimationFrame(()=>requestAnimationFrame(()=>{ rv.style.strokeDashoffset = (C*(1-pct)); }));
   countUp(document.getElementById("ring-num"), r0(remaining));
+  attachHeroMotion();   // Hero-Video nach Re-Render wieder einhaengen (laeuft nahtlos weiter)
 }
 function macroBar(label, val, target){
   const pct = Math.min(100, target>0 ? val/target*100 : 0);
@@ -3462,6 +3478,81 @@ function makeAppIcon(size){
   }catch(e){ /* Manifest ist optional – die App funktioniert auch ohne */ }
 })();
 
+/* ---------- Higgsfield-Motion: nahtlose Video-Loops (Crossfade, kein harter Neustart) ---------- */
+const MOTION_AURORA = {url:"https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_110833_6ba7f022-0b3d-4232-8562-1517a2be74e4.mp4",
+                       poster:"https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_100241_f64321be-e1bf-463a-881c-8707a223433a.png"};
+const MOTION_HERO   = {url:"https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_110555_d09604fb-d90b-46ab-ab08-b277c7d5c76c.mp4",
+                       poster:"https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_100228_a269e990-aece-4ada-b845-1f94c739671c.png"};
+let _motionPlayers = [], _heroPlayer = null, heroMotionEl = null;
+
+function makeLoopPlayer(wrap, media){
+  const FADE = 1.1;                                     // Sekunden Ueberblendung
+  const vids = [];
+  for(let i=0;i<2;i++){
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto";
+    v.setAttribute("playsinline",""); v.setAttribute("muted","");
+    v.src = media.url; v.poster = media.poster;
+    v.setAttribute("aria-hidden","true"); v.tabIndex = -1;
+    wrap.appendChild(v); vids.push(v);
+  }
+  let act = 0, switching = false;
+  function tryPlay(v){ const p = v.play(); if(p && p.catch) p.catch(function(){}); }
+  function swap(){                                      // weicher Crossfade zum zweiten Video
+    if(switching) return;
+    switching = true;
+    const cur = vids[act], nxt = vids[1-act];
+    nxt.currentTime = 0; tryPlay(nxt);
+    nxt.classList.add("on"); cur.classList.remove("on");
+    setTimeout(function(){ cur.pause(); act = 1-act; switching = false; }, FADE*1000+80);
+  }
+  vids.forEach(function(v){
+    v.addEventListener("timeupdate", function(){
+      if(v===vids[act] && v.duration && v.currentTime >= v.duration - FADE - 0.15) swap();
+    });
+    v.addEventListener("ended", function(){ if(v===vids[act]) swap(); });  // Sicherheitsnetz
+  });
+  vids[0].classList.add("on"); tryPlay(vids[0]);
+  const player = {
+    vids,
+    resume(){ tryPlay(vids[act]); if(switching) tryPlay(vids[1-act]); },
+    pause(){ vids.forEach(function(v){ v.pause(); }); }
+  };
+  _motionPlayers.push(player);
+  return player;
+}
+function attachHeroMotion(){                            // Hero-Video ueberlebt Dashboard-Re-Render
+  if(!heroMotionEl) return;
+  const hero = document.querySelector("#view-dashboard .hero");
+  if(hero && heroMotionEl.parentNode !== hero){
+    hero.prepend(heroMotionEl);                         // synchroner DOM-Umzug -> spielt weiter
+    if(_heroPlayer) _heroPlayer.resume();
+  }
+}
+function setupMotion(){
+  try{
+    if(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;  // Barrierefreiheit
+    if(navigator.connection && navigator.connection.saveData) return;                        // Datensparmodus
+    if(!document.createElement("video").canPlayType) return;
+    document.documentElement.classList.add("motion");
+    // 1) Aurora-Hintergrund (nur im Dark Mode sichtbar, per CSS gesteuert)
+    const bg = document.createElement("div");
+    bg.id = "bg-motion"; bg.setAttribute("aria-hidden","true");
+    document.body.appendChild(bg);
+    makeLoopPlayer(bg, MOTION_AURORA);
+    // 2) Hero-Animation am Dashboard (persistentes Element)
+    heroMotionEl = document.createElement("div");
+    heroMotionEl.id = "hero-motion"; heroMotionEl.setAttribute("aria-hidden","true");
+    _heroPlayer = makeLoopPlayer(heroMotionEl, MOTION_HERO);
+    const shade = document.createElement("div"); shade.className = "hm-shade";
+    heroMotionEl.appendChild(shade);                    // Verlauf liegt UEBER den Videos
+    attachHeroMotion();
+    document.addEventListener("visibilitychange", function(){  // Akku schonen
+      _motionPlayers.forEach(function(p){ if(document.hidden) p.pause(); else p.resume(); });
+    });
+  }catch(e){ /* Motion ist optional - statische Bilder bleiben als Fallback */ }
+}
+
 /* ---------- Start ---------- */
 load();
 applyTheme(localStorage.getItem("fittrack_theme")||"dark");
@@ -3469,6 +3560,7 @@ document.getElementById("hdate").textContent = new Date().toLocaleDateString("de
 switchTab("dashboard");
 updateAwBar();
 if(state.active){ awTimer = setInterval(updateAwTime, 1000); }
+setupMotion();
 </script>
 </body>
 </html>
