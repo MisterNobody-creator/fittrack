@@ -16,7 +16,7 @@
 <link rel="manifest" id="manifest-link">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#0b0e16;
@@ -26,7 +26,7 @@
     --accent:#818cf8;
     --grad:linear-gradient(135deg,#6366f1 0%,#8b5cf6 55%,#a855f7 100%);
     --green:#34d399; --orange:#fbbf24; --red:#fb7185; --purple:#c084fc; --cyan:#38bdf8;
-    --radius:20px;
+    --radius:24px;
     --shadow:0 10px 30px -14px rgba(0,0,0,.5);
     --glow:0 8px 22px -8px rgba(99,102,241,.55);
     --hdrbg:rgba(11,14,22,.72); --navbg:rgba(22,27,40,.88);
@@ -88,8 +88,8 @@
   input::placeholder{color:var(--muted)}
   label{display:block; font-size:12px; color:var(--muted); margin:12px 0 5px; font-weight:600}
   /* Bottom-Navigation */
-  nav{position:fixed; bottom:12px; left:50%; transform:translateX(-50%); width:min(612px, calc(100% - 24px)); display:flex; gap:2px; background:var(--navbg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid var(--border); border-radius:22px; padding:6px; box-shadow:var(--shadow); z-index:50}
-  nav button{flex:1; background:none; color:var(--muted); padding:8px 0 7px; font-size:10.5px; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:4px; border-radius:16px; transition:color .2s, background .2s}
+  nav{position:fixed; bottom:12px; left:50%; transform:translateX(-50%); width:min(612px, calc(100% - 24px)); display:flex; gap:2px; background:var(--navbg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid var(--border); border-radius:999px; padding:6px; box-shadow:var(--shadow); z-index:50}
+  nav button{flex:1; background:none; color:var(--muted); padding:8px 0 7px; font-size:10.5px; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:4px; border-radius:999px; transition:color .2s, background .2s}
   nav button svg{width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; transition:transform .2s}
   nav button.on{color:#fff; background:var(--grad); box-shadow:var(--glow)}
   /* Kalorien-Ring */
@@ -307,6 +307,67 @@
     .fade>*{opacity:1; animation:none}
     body::after{animation:none}
   }
+
+  /* ========== v2-Design: Higgsfield-Redesign (nur Optik) ========== */
+  .vbadge{display:inline-block; vertical-align:middle; margin-left:2px; font-size:10px; font-weight:700;
+    letter-spacing:.8px; padding:2.5px 8px; border-radius:999px; color:#fff;
+    background:var(--grad); box-shadow:var(--glow)}
+  h1,h2,h3,.logo,.stat b,.ring .mid b{font-family:'Sora','Inter',system-ui,sans-serif}
+  h2{letter-spacing:-.4px}
+  .stat b{letter-spacing:-.8px}
+  html[data-theme="dark"] body::before{
+    background:
+      linear-gradient(180deg, rgba(11,14,22,.42) 0%, rgba(11,14,22,.72) 45%, rgba(11,14,22,.94) 80%, #0b0e16 100%),
+      url('https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_100241_f64321be-e1bf-463a-881c-8707a223433a.png') center/cover no-repeat, var(--bg)}
+  html[data-theme="dark"] .card{backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px)}
+  html[data-theme="dark"] .stat{backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px)}
+  .stat{border-radius:20px}
+  .stat span{text-transform:uppercase; letter-spacing:1.3px; font-size:10px; font-weight:600}
+  .stat b{font-size:25px}
+  .logo{font-weight:800; letter-spacing:-.6px}
+  button{border-radius:13px}
+  .chip,.rc{border-radius:999px}
+
+  /* --- v2: Hero mit Higgsfield-Visual (nur Dashboard) --- */
+  #view-dashboard .hero{
+    position:relative; overflow:hidden; border-radius:28px; border:1px solid var(--border);
+    padding:26px 22px; min-height:190px; margin-bottom:14px;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    background:
+      linear-gradient(100deg, rgba(11,14,22,.88) 34%, rgba(11,14,22,.42) 62%, rgba(11,14,22,.05) 100%),
+      url('https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_100228_a269e990-aece-4ada-b845-1f94c739671c.png') right center/cover no-repeat, var(--card-solid);
+    box-shadow:0 24px 60px -24px rgba(0,0,0,.65), 0 0 80px rgba(139,92,246,.12)}
+  html[data-theme="light"] #view-dashboard .hero{
+    background:
+      linear-gradient(100deg, rgba(238,241,247,.94) 36%, rgba(238,241,247,.55) 62%, rgba(238,241,247,.08) 100%),
+      url('https://d8j0ntlcm91z4.cloudfront.net/user_3GMT9fk0c3IKefA5uuWe4H5fLoG/hf_20260713_100228_a269e990-aece-4ada-b845-1f94c739671c.png') right center/cover no-repeat, var(--card-solid)}
+  #view-dashboard .hero .greet{font-size:clamp(30px,6vw,42px); letter-spacing:-1.6px; line-height:1.05; margin-bottom:8px}
+  #view-dashboard .hero .muted{font-size:14.5px; max-width:60%}
+  #view-dashboard .hero::before{content:"FITTRACK"; display:block; margin-bottom:auto; padding-bottom:18px;
+    font-size:10.5px; font-weight:700; letter-spacing:2.6px; color:var(--purple); font-family:'Sora',sans-serif}
+
+  /* --- v2: Pill-Textnavigation (breite Screens) --- */
+  @media(min-width:700px){
+    nav{width:fit-content; padding:7px}
+    nav button{flex:none; flex-direction:row; gap:8px; padding:10px 20px; font-size:13px}
+    nav button svg{width:17px; height:17px}
+  }
+
+  /* --- v2: Bento-Grid am Desktop --- */
+  @media(min-width:900px){
+    body{max-width:1000px}
+    main{padding:18px 18px 0}
+    main>div:not(#view-dashboard){max-width:660px; margin:0 auto}
+    #view-dashboard{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start}
+    #view-dashboard>*{margin-bottom:0}
+    #view-dashboard .hero,#view-dashboard .banner,#view-dashboard .statgrid,#view-dashboard .quickrow{grid-column:span 2}
+    #view-dashboard .statgrid{margin-bottom:0}
+    #view-dashboard .hero{min-height:240px}
+    #view-dashboard .hero .muted{max-width:46%}
+  }
+  h2{font-size:19px}
+  .btn{border-radius:999px}
+  input,select,textarea{border-radius:14px}
 </style>
 </head>
 <body>
@@ -1220,6 +1281,7 @@ function checkNewBadges(){
 let currentTab = "dashboard";
 function switchTab(tab){
   currentTab = tab;
+  document.body.setAttribute("data-tab", tab); // v2-Design-Hook (nur CSS-Steuerung)
   for(const v of ["dashboard","nutrition","training","progress","profile"]){
     document.getElementById("view-"+v).style.display = v===tab ? "" : "none";
     document.getElementById("nav-"+v).classList.toggle("on", v===tab);
