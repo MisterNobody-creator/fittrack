@@ -250,6 +250,28 @@
   @media (hover:hover){ .badge:hover{transform:translateY(-2px); border-color:var(--border2)} }
   .badge.earned .bicon{animation:badgePop .5s cubic-bezier(.34,1.56,.64,1)}
   @keyframes badgePop{0%{transform:scale(.7)} 60%{transform:scale(1.12)} 100%{transform:scale(1)}}
+  /* Schnellaktionen am Dashboard */
+  .quickrow{display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:14px}
+  .qbtn{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:12px 4px 10px; display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--text); box-shadow:var(--shadow); transition:transform .15s, border-color .2s; cursor:pointer}
+  .qbtn:active{transform:scale(.93)}
+  .qbtn .qi{font-size:20px; line-height:1.2}
+  .qbtn span{font-size:10.5px; color:var(--muted); font-weight:600}
+  @media (hover:hover){ .qbtn:hover{transform:translateY(-2px); border-color:var(--accent)} }
+  /* Aktivitäts-Heatmap (GitHub-Stil) */
+  .heatwrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  .heatmonths{display:grid; grid-template-columns:repeat(16,1fr); gap:3px; font-size:9px; color:var(--muted); font-weight:600; margin-bottom:5px; min-width:330px}
+  .heatgrid{display:grid; grid-template-rows:repeat(7,1fr); grid-auto-flow:column; gap:3px; min-width:330px}
+  .heatgrid i, .heatlegend i{display:block; aspect-ratio:1; border-radius:4px; background:var(--card2); border:1px solid var(--border)}
+  .heatgrid i{cursor:pointer; transition:transform .15s}
+  .heatgrid i.hmf{opacity:.22; cursor:default}
+  .heatgrid i.hmt{outline:1.5px solid var(--accent); outline-offset:1px}
+  i.hm1{background:rgba(139,92,246,.3); border-color:transparent}
+  i.hm2{background:rgba(139,92,246,.55); border-color:transparent}
+  i.hm3{background:#8b5cf6; border-color:transparent}
+  i.hm4{background:linear-gradient(135deg,#6366f1,#a855f7); border-color:transparent; box-shadow:0 0 7px rgba(139,92,246,.55)}
+  @media (hover:hover){ .heatgrid i:not(.hmf):hover{transform:scale(1.25)} }
+  .heatlegend{display:flex; align-items:center; gap:3px; font-size:10px; color:var(--muted)}
+  .heatlegend i{width:11px; height:11px}
   /* ===== Design-Upgrade: lebendig & modern, dezente Micro-Interactions ===== */
   :root{--shadowh:0 18px 40px -16px rgba(0,0,0,.65), 0 0 0 1px rgba(129,140,248,.16)}
   html[data-theme="light"]{--shadowh:0 18px 34px -18px rgba(30,41,80,.4)}
@@ -338,7 +360,7 @@
     main>div:not(#view-dashboard){max-width:660px; margin:0 auto}
     #view-dashboard{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start}
     #view-dashboard>*{margin-bottom:0}
-    #view-dashboard .hero,#view-dashboard .banner,#view-dashboard .statgrid{grid-column:span 2}
+    #view-dashboard .hero,#view-dashboard .banner,#view-dashboard .statgrid,#view-dashboard .quickrow{grid-column:span 2}
     #view-dashboard .statgrid{margin-bottom:0}
     #view-dashboard .hero{min-height:240px}
     #view-dashboard .hero .muted{max-width:46%}
@@ -1346,6 +1368,14 @@ function renderDashboard(){
     + '<div class="stat"><b>'+wkWorkouts+'</b><span>🏋️ Workouts diese Woche</span></div>'
     + '</div>';
 
+  // Schnellaktionen: die häufigsten Aktionen mit einem Tap
+  html += '<div class="quickrow">'
+    + '<button class="qbtn" onclick="quickAddFood()"><span class="qi">🍎</span><span>Mahlzeit</span></button>'
+    + '<button class="qbtn" onclick="quickWater()"><span class="qi">💧</span><span>+1 Glas</span></button>'
+    + '<button class="qbtn" onclick="openStepsModal(\''+ds+'\')"><span class="qi">👟</span><span>Schritte</span></button>'
+    + '<button class="qbtn" onclick="openWeightModal()"><span class="qi">⚖️</span><span>Gewicht</span></button>'
+    + '</div>';
+
   html += '<div class="card"><div class="cardhead"><span class="cicon">🔥</span><h3>Kalorien heute</h3></div>'
     + '<div class="ringwrap">'
     + '<div class="ring"><svg width="150" height="150" viewBox="0 0 150 150">'
@@ -1430,6 +1460,18 @@ function openStepsModal(ds){
 function saveSteps(ds){
   getDay(ds).steps = Math.max(0, r0(num(document.getElementById("steps-in").value)));
   save(); closeModal(); renderTab(currentTab); toast("Schritte gespeichert");
+}
+
+/* ---------- Schnellaktionen am Dashboard (loggen immer für heute) ---------- */
+function quickAddFood(){
+  nutriDate = todayStr();                 // Quick-Add vom Dashboard landet immer im heutigen Tag
+  openFoodModal(defaultMealSlot());
+}
+function quickWater(){
+  const ds = todayStr(), d = getDay(ds);
+  d.water = (d.water||0) + 1;
+  save(); renderTab(currentTab);
+  toast("💧 Glas "+d.water+" – "+String(r1(d.water*0.25)).replace(".",",")+" l heute");
 }
 
 /* ============================================================
@@ -2723,6 +2765,56 @@ function cancelWorkout(silent){
 /* ============================================================
    FORTSCHRITT
    ============================================================ */
+/* ---------- Aktivitäts-Heatmap (GitHub-Stil, rein abgeleitet – keine neuen Speicherdaten) ---------- */
+function dayHeatInfo(ds){
+  const d = state.diary[ds];               // bewusst ohne getDay(): legt keine leeren Tage an
+  const parts = [];
+  let meals = 0;
+  if(d && d.meals) for(const k in d.meals) meals += (d.meals[k]||[]).length;
+  if(meals) parts.push(meals===1 ? "1 Lebensmittel" : meals+" Lebensmittel");
+  const wk = state.sessions.filter(s=>s.date===ds).length;
+  if(wk) parts.push(wk===1 ? "1 Workout" : wk+" Workouts");
+  if(d && d.water) parts.push(d.water+" Gl. Wasser");
+  if(d && d.steps) parts.push(d.steps.toLocaleString("de-DE")+" Schritte");
+  const acts = d && d.activities ? d.activities.length : 0;
+  if(acts) parts.push(acts===1 ? "1 Aktivität" : acts+" Aktivitäten");
+  let lvl = 0;
+  if(meals) lvl++;
+  if((d && (d.water || d.steps)) || acts) lvl++;
+  if(wk) lvl += 2;
+  return {lvl:Math.min(4,lvl), parts};
+}
+function heatTap(ds){
+  const info = dayHeatInfo(ds);
+  toast(fmtDate(ds)+": "+(info.parts.length ? info.parts.join(" · ") : "keine Einträge"));
+}
+const HEAT_WEEKS = 16;
+function heatmapHtml(){
+  const today = todayStr();
+  const mon = mondayOf(today);
+  const MN = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+  let months = "", cells = "", active = 0, total = 0, lastM = -1;
+  for(let w=HEAT_WEEKS-1; w>=0; w--){
+    const wMon = addDays(mon, -7*w);
+    const m = new Date(wMon+"T12:00:00").getMonth();
+    months += '<span>'+(m!==lastM ? MN[m] : "")+'</span>';
+    lastM = m;
+    for(let i=0;i<7;i++){
+      const ds = addDays(wMon, i);
+      if(ds > today){ cells += '<i class="hmf" aria-hidden="true"></i>'; continue; }
+      const info = dayHeatInfo(ds);
+      total++;
+      if(info.lvl>0) active++;
+      const tip = fmtDate(ds)+(info.parts.length ? ": "+info.parts.join(" · ") : ": keine Einträge");
+      cells += '<i class="hm'+info.lvl+(ds===today?' hmt':'')+'" role="img" tabindex="0" title="'+esc(tip)+'" aria-label="'+esc(tip)+'" onclick="heatTap(\''+ds+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();heatTap(\''+ds+'\')}"></i>';
+    }
+  }
+  return '<div class="heatwrap"><div class="heatmonths">'+months+'</div>'
+    + '<div class="heatgrid">'+cells+'</div></div>'
+    + '<div class="row between" style="margin-top:9px"><span class="muted" style="font-size:12px">'+active+' von '+total+' Tagen aktiv</span>'
+    + '<span class="heatlegend">Weniger <i class="hm0"></i><i class="hm1"></i><i class="hm2"></i><i class="hm3"></i><i class="hm4"></i> Mehr</span></div>';
+}
+
 function renderProgress(){
   let html = "";
 
@@ -2739,6 +2831,10 @@ function renderProgress(){
       + wkRow("Wasser (Gläser)", cur.water, prev.water, trendMark(cur.water, prev.water, false));
   }
   html += '</div>';
+
+  // Aktivitäts-Heatmap (letzte 16 Wochen, antippbar für Tages-Details)
+  html += '<div class="card"><div class="cardhead"><span class="cicon">🗓️</span><h3>Aktivitäts-Heatmap</h3><span class="muted">16 Wochen</span></div>'
+    + heatmapHtml() + '</div>';
 
   // Erfolgs-Badges
   const badges = badgeList(), got = badges.filter(b=>b.earned).length;
