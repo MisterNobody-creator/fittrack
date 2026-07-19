@@ -1134,7 +1134,8 @@ let state = {
            macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90},
   customFoods:[], diary:{}, plans:[], sessions:[], weights:[], customExercises:[], active:null,
   badgesSeen:[],  // additiv: IDs bereits gemeldeter Erfolgs-Badges
-  recipes:[]      // additiv: eigene Rezepte (gespeicherte Mahlzeiten)
+  recipes:[],     // additiv: eigene Rezepte (gespeicherte Mahlzeiten)
+  measures:[]     // additiv: Körpermaße-Messungen ({date, waist/chest/hips/arm/thigh} in cm)
 };
 
 function load(){
@@ -1143,7 +1144,8 @@ function load(){
     if(raw){ const d = JSON.parse(raw); state = Object.assign(state, d);
       state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90}, state.profile);
       if(typeof state.profile.restSec !== "number") state.profile.restSec = 90;
-      if(!Array.isArray(state.recipes)) state.recipes = []; }
+      if(!Array.isArray(state.recipes)) state.recipes = [];
+      if(!Array.isArray(state.measures)) state.measures = []; }
   }catch(e){ console.warn("Laden fehlgeschlagen", e); }
 }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); checkNewBadges(); }
@@ -2888,6 +2890,9 @@ function renderProgress(){
   }
   html += '</div>';
 
+  // Körpermaße
+  html += measureCardHtml();
+
   // Kalorien letzte 7 Tage
   const days = [];
   for(let i=6;i>=0;i--){
@@ -2918,6 +2923,7 @@ function renderProgress(){
     + '<button class="btn ghost grow" onclick="exportData()">Export (JSON)</button>'
     + '<button class="btn ghost grow" onclick="document.getElementById(\'import-file\').click()">Import</button></div>'
     + '<button class="btn ghost full" style="margin-top:9px" onclick="exportDiaryCSV()">📄 Ernährungstagebuch als CSV</button>'
+    + '<button class="btn ghost full" style="margin-top:9px" onclick="exportBodyCSV()">📊 Körperdaten als CSV (Gewicht + Maße)</button>'
     + '<p class="muted" style="font-size:11.5px; margin-top:7px">CSV lässt sich in Excel oder Google Sheets öffnen.</p>'
     + '<input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)"></div>';
 
@@ -2948,6 +2954,117 @@ function deleteWeight(ds){
     state.weights.splice(Math.min(idx, state.weights.length), 0, w);
     save(); if(currentTab==="progress") renderProgress();
   });
+}
+
+/* ---------- Körpermaße (additiv: state.measures) ---------- */
+const MEAS_FIELDS = [
+  {k:"waist", label:"Taille"},
+  {k:"chest", label:"Brust"},
+  {k:"hips",  label:"Hüfte"},
+  {k:"arm",   label:"Oberarm"},
+  {k:"thigh", label:"Oberschenkel"}
+];
+let measureSel = null; // im Chart gewählte Messgröße (nicht persistiert)
+
+function sortedMeasures(){ return (state.measures||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)); }
+function measureSeries(key){ return sortedMeasures().filter(m=>m[key]>0).map(m=>({x:m.date, y:m[key]})); }
+
+function measureCardHtml(){
+  const ms = sortedMeasures();
+  let html = '<div class="card"><div class="row between"><h3>📏 Körpermaße</h3>'
+    + '<button class="btn small" onclick="openMeasureModal()">＋ Messung</button></div>';
+  if(!ms.length){
+    return html + emptyState('📏','Noch keine Maße eingetragen','Tippe auf „＋ Messung“ – Taille, Brust, Hüfte, Oberarm, Oberschenkel. Jedes Feld ist optional.') + '</div>';
+  }
+  html += '<div class="statgrid" style="margin-top:10px; margin-bottom:0">';
+  for(const f of MEAS_FIELDS){
+    const ser = measureSeries(f.k);
+    if(!ser.length) continue;
+    const last = ser[ser.length-1];
+    let delta = "";
+    if(ser.length>1){
+      const d = r1(last.y - ser[ser.length-2].y);
+      if(d!==0) delta = ' <small style="font-size:11px; font-weight:600">('+(d>0?"+":"")+d+')</small>';
+    }
+    html += '<div class="stat"><b>'+r1(last.y)+'<small style="font-size:12px"> cm</small>'+delta+'</b><span>'+f.label+'</span></div>';
+  }
+  html += '</div>';
+  const chartable = MEAS_FIELDS.filter(f=>measureSeries(f.k).length>=2);
+  if(chartable.length){
+    if(!measureSel || !chartable.some(f=>f.k===measureSel)) measureSel = chartable[0].k;
+    html += '<div class="chips" style="margin-top:12px; margin-bottom:0">'
+      + chartable.map(f=>'<button class="chip'+(f.k===measureSel?" on":"")+'" onclick="setMeasureSel(\''+f.k+'\')">'+f.label+'</button>').join("")
+      + '</div>' + lineChart(measureSeries(measureSel).slice(-30));
+  } else {
+    html += '<p class="muted" style="margin-top:10px; font-size:13px">Ab zwei Messungen derselben Stelle siehst du hier deinen Verlauf als Kurve.</p>';
+  }
+  html += '<details style="margin-top:8px"><summary class="muted" style="cursor:pointer; font-size:13px">Alle Messungen</summary>';
+  for(let i=ms.length-1;i>=0;i--){
+    const m = ms[i];
+    const parts = MEAS_FIELDS.filter(f=>m[f.k]>0).map(f=>f.label+" "+r1(m[f.k]));
+    html += '<div class="fooditem"><span>'+fmtDate(m.date)+'</span><b style="font-size:12.5px">'+parts.join(" · ")+' cm</b>'
+      + '<button class="del" onclick="deleteMeasure(\''+m.date+'\')" aria-label="Messung löschen">🗑</button></div>';
+  }
+  html += '</details></div>';
+  return html;
+}
+function setMeasureSel(k){ measureSel = k; renderProgress(); }
+function openMeasureModal(){
+  const lastVal = k => { const s = measureSeries(k); return s.length ? r1(s[s.length-1].y) : ""; };
+  let html = '<h3>📏 Körpermaße eintragen</h3>'
+    + '<p class="muted" style="font-size:13px; margin-top:4px">Alle Angaben in cm – leere Felder werden übersprungen.</p>'
+    + '<label>Datum</label><input type="date" id="m-date" value="'+todayStr()+'">';
+  for(const f of MEAS_FIELDS){
+    html += '<label>'+f.label+' (cm)</label><input type="number" id="m-'+f.k+'" step="0.1" min="0" inputmode="decimal" placeholder="'+(lastVal(f.k)!==""?("zuletzt "+lastVal(f.k)):"–")+'">';
+  }
+  html += '<button class="btn full" style="margin-top:14px" onclick="saveMeasure()">Speichern</button>';
+  openModal(html);
+}
+function saveMeasure(){
+  const ds = document.getElementById("m-date").value;
+  if(!ds){ toast("Bitte Datum angeben"); return; }
+  const entry = {date:ds};
+  let any = false;
+  for(const f of MEAS_FIELDS){
+    const v = num(document.getElementById("m-"+f.k).value);
+    if(v>0){ entry[f.k] = v; any = true; }
+  }
+  if(!any){ toast("Bitte mindestens ein Maß eingeben"); return; }
+  const old = state.measures.find(m=>m.date===ds);
+  if(old) Object.assign(old, entry);
+  else state.measures.push(entry);
+  save(); closeModal(); renderProgress(); toast("Maße gespeichert ✓");
+}
+function deleteMeasure(ds){
+  const idx = state.measures.findIndex(m=>m.date===ds);
+  if(idx<0) return;
+  const m = state.measures.splice(idx,1)[0];
+  save(); renderProgress();
+  toastUndo('Messung gelöscht', function(){
+    state.measures.splice(Math.min(idx, state.measures.length), 0, m);
+    save(); if(currentTab==="progress") renderProgress();
+  });
+}
+function exportBodyCSV(){
+  const csvCell = v => { const s = String(v==null?"":v).replace(/"/g,'""'); return /[";\n]/.test(s) ? '"'+s+'"' : s; };
+  const rows = [["Datum","Gewicht (kg)","Taille (cm)","Brust (cm)","Huefte (cm)","Oberarm (cm)","Oberschenkel (cm)"]];
+  const byDate = {};
+  for(const w of state.weights){ (byDate[w.date] = byDate[w.date]||{}).kg = w.kg; }
+  for(const m of state.measures){ const o = byDate[m.date] = byDate[m.date]||{}; for(const f of MEAS_FIELDS){ if(m[f.k]>0) o[f.k] = m[f.k]; } }
+  const dates = Object.keys(byDate).sort();
+  for(const ds of dates){
+    const o = byDate[ds];
+    rows.push([ds, o.kg!=null?r1(o.kg):"", ...MEAS_FIELDS.map(f=>o[f.k]!=null?r1(o[f.k]):"")]);
+  }
+  if(rows.length===1){ toast("Noch keine Körperdaten zum Exportieren"); return; }
+  const csv = "﻿" + rows.map(r=>r.map(csvCell).join(";")).join("\r\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "fittrack-koerperdaten-"+todayStr()+".csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("CSV heruntergeladen ✓ ("+(rows.length-1)+" Tage)");
 }
 
 /* ---------- Charts (SVG) ---------- */
