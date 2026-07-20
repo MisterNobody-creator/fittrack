@@ -134,6 +134,10 @@
   .weekstrip button.sel .wdot.log, .weekstrip button.sel .wdot.over{background:#fff; border-color:transparent}
   .weekstrip button.fut{opacity:.45}
   @media (hover:hover){ .weekstrip button:not(.sel):hover{border-color:var(--accent)} }
+  /* Zielgewicht (Fortschritt-Tab) */
+  .goalbox{margin-top:12px; padding:12px 14px; background:var(--card2); border:1px solid var(--border); border-radius:16px}
+  .goalbar{height:8px; background:var(--bg); border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:9px}
+  .goalbar i{display:block; height:100%; border-radius:6px; background:var(--grad); transition:width .5s ease}
   /* Chips */
   .chips{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px}
   .chip{background:var(--card2); border:1px solid var(--border); color:var(--muted); padding:7px 14px; border-radius:20px; font-size:13px; font-weight:500; transition:.2s}
@@ -1131,7 +1135,7 @@ const KCAL_PER_STEP = 0.04;
 const STORE_KEY = "fittrack_data_v1";
 let state = {
   profile:{gender:"m", age:30, height:180, weight:80, activity:1.4, kcalTarget:2200,
-           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90},
+           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90, targetWeight:null},
   customFoods:[], diary:{}, plans:[], sessions:[], weights:[], customExercises:[], active:null,
   badgesSeen:[],  // additiv: IDs bereits gemeldeter Erfolgs-Badges
   recipes:[],     // additiv: eigene Rezepte (gespeicherte Mahlzeiten)
@@ -1142,7 +1146,7 @@ function load(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
     if(raw){ const d = JSON.parse(raw); state = Object.assign(state, d);
-      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90}, state.profile);
+      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90,targetWeight:null}, state.profile);
       if(typeof state.profile.restSec !== "number") state.profile.restSec = 90;
       if(!Array.isArray(state.recipes)) state.recipes = [];
       if(!Array.isArray(state.measures)) state.measures = []; }
@@ -2874,12 +2878,14 @@ function renderProgress(){
   if(ws.length>=2){
     const diff = ws[ws.length-1].kg - ws[0].kg;
     html += '<p class="muted">Aktuell: <b style="color:var(--text)">'+r1(ws[ws.length-1].kg)+' kg</b> · Veränderung gesamt: '+(diff>0?"+":"")+r1(diff)+' kg</p>';
-    html += lineChart(ws.slice(-30).map(w=>({x:w.date, y:w.kg})));
+    html += lineChart(ws.slice(-30).map(w=>({x:w.date, y:w.kg})), state.profile.targetWeight);
   } else if(ws.length===1){
     html += '<p class="muted">Aktuell: <b style="color:var(--text)">'+r1(ws[0].kg)+' kg</b> – trage regelmäßig ein, um den Verlauf zu sehen.</p>';
   } else {
     html += emptyState('⚖️','Noch kein Gewicht eingetragen','Tippe auf „＋ Eintragen“ – ab zwei Einträgen siehst du hier deinen Verlauf als Kurve.');
   }
+  // Zielgewicht: Fortschrittsbalken + Trend-Prognose (additiv, nur wenn gesetzt)
+  html += weightGoalHtml(ws);
   if(ws.length){
     html += '<details style="margin-top:8px"><summary class="muted" style="cursor:pointer; font-size:13px">Alle Einträge</summary>';
     for(let i=ws.length-1;i>=0;i--){
@@ -2954,6 +2960,85 @@ function deleteWeight(ds){
     state.weights.splice(Math.min(idx, state.weights.length), 0, w);
     save(); if(currentTab==="progress") renderProgress();
   });
+}
+
+/* ---------- Zielgewicht & Trend-Prognose (additiv: profile.targetWeight) ---------- */
+function weightTrend(ws){
+  // Lineare Regression (kleinste Quadrate) über die Einträge der letzten 42 Tage,
+  // Fallback: letzte 5 Einträge. Liefert {perWeek} in kg/Woche oder null.
+  if(ws.length<2) return null;
+  const cutoff = addDays(todayStr(), -42);
+  let pts = ws.filter(w=>w.date>=cutoff);
+  if(pts.length<2) pts = ws.slice(-5);
+  if(pts.length<2) return null;
+  const t0 = new Date(pts[0].date+"T12:00:00").getTime();
+  const xs = pts.map(w=>(new Date(w.date+"T12:00:00").getTime()-t0)/86400000);
+  if(xs[xs.length-1]-xs[0] < 2) return null; // zu kurzer Zeitraum für eine seriöse Schätzung
+  const n = pts.length;
+  const mx = xs.reduce((a,b)=>a+b,0)/n, my = pts.reduce((a,w)=>a+w.kg,0)/n;
+  let nu = 0, de = 0;
+  for(let i=0;i<n;i++){ nu += (xs[i]-mx)*(pts[i].kg-my); de += (xs[i]-mx)*(xs[i]-mx); }
+  if(de===0) return null;
+  return { perWeek: nu/de*7 };
+}
+function weightGoalHtml(ws){
+  const t = state.profile.targetWeight;
+  if(typeof t !== "number" || !(t>0)){
+    return ws.length ? '<button class="btn ghost full" style="margin-top:10px" onclick="openTargetModal()">🎯 Zielgewicht festlegen</button>' : '';
+  }
+  const cur = ws.length ? ws[ws.length-1].kg : state.profile.weight;
+  const start = ws.length ? ws[0].kg : cur;
+  const rest = t - cur;
+  let pct;
+  if(Math.abs(start-t) > 0.05) pct = Math.max(0, Math.min(100, (start-cur)/(start-t)*100));
+  else pct = Math.abs(rest)<=0.05 ? 100 : 0;
+  const tr = weightTrend(ws);
+  let trendTxt;
+  if(Math.abs(rest) <= 0.3){
+    trendTxt = '🎉 Ziel erreicht – stark! Passe dein Ziel an oder halte dein Gewicht.';
+  } else if(!tr){
+    trendTxt = 'Trage regelmäßig dein Gewicht ein – dann schätzt FitTrack hier, wann du dein Ziel erreichst.';
+  } else {
+    const pw = tr.perWeek;
+    const pwTxt = (pw>=0?'+':'−') + r1(Math.abs(pw)) + ' kg/Woche';
+    if(Math.abs(pw) < 0.05){
+      trendTxt = 'Trend: stabil (±0 kg/Woche). Für dein Ziel braucht es eine kleine Anpassung bei Ernährung oder Training.';
+    } else if(pw*rest > 0){
+      const days = Math.round(Math.abs(rest/(pw/7)));
+      trendTxt = days <= 730
+        ? 'Trend: '+pwTxt+' · bei diesem Tempo erreichst du dein Ziel voraussichtlich am <b style="color:var(--text)">'+fmtDate(addDays(todayStr(), days))+'</b>.'
+        : 'Trend: '+pwTxt+' – aktuell sehr langsam. Kleine Anpassungen bei Ernährung oder Training beschleunigen den Fortschritt.';
+    } else {
+      trendTxt = 'Trend: '+pwTxt+' – gerade in die andere Richtung. Bleib dran, dein Ziel ist weiter erreichbar.';
+    }
+  }
+  return '<div class="goalbox">'
+    + '<div class="row between"><span class="muted" style="font-weight:600; font-size:13px">🎯 Ziel: <b style="color:var(--text)">'+r1(t)+' kg</b>'
+    + (Math.abs(rest)>0.3 ? ' · noch '+(rest>0?'+':'')+r1(rest)+' kg' : '')+'</span>'
+    + '<button class="iconbtn" style="width:30px; height:30px; font-size:13px; border-radius:10px" onclick="openTargetModal()" aria-label="Zielgewicht ändern">✎</button></div>'
+    + '<div class="goalbar" role="progressbar" aria-valuenow="'+r0(pct)+'" aria-valuemin="0" aria-valuemax="100" aria-label="Fortschritt zum Zielgewicht"><i style="width:'+r1(pct)+'%"></i></div>'
+    + '<p class="muted" style="font-size:12.5px; margin-top:7px; margin-bottom:0">'+trendTxt+'</p>'
+    + '</div>';
+}
+function openTargetModal(){
+  const t = state.profile.targetWeight;
+  openModal('<h3>🎯 Zielgewicht</h3>'
+    + '<p class="muted" style="font-size:13px">FitTrack zeigt dir dann deinen Fortschritt und schätzt anhand deines Trends, wann du dein Ziel erreichst.</p>'
+    + '<label>Zielgewicht (kg)</label><input type="number" id="tw-kg" step="0.1" min="1" inputmode="decimal" value="'+(typeof t==="number"?r1(t):"")+'" placeholder="z. B. 75">'
+    + '<button class="btn full" style="margin-top:14px" onclick="saveTarget()">Speichern</button>'
+    + (typeof t==="number" ? '<button class="btn ghost full" style="margin-top:9px" onclick="clearTarget()">Ziel entfernen</button>' : ''));
+}
+function saveTarget(){
+  const kg = num(document.getElementById("tw-kg").value);
+  if(kg<=0 || kg>400){ toast("Bitte ein realistisches Zielgewicht angeben"); return; }
+  state.profile.targetWeight = kg;
+  save(); closeModal(); if(currentTab==="progress") renderProgress();
+  toast("Zielgewicht gespeichert ✓");
+}
+function clearTarget(){
+  state.profile.targetWeight = null;
+  save(); closeModal(); if(currentTab==="progress") renderProgress();
+  toast("Zielgewicht entfernt");
 }
 
 /* ---------- Körpermaße (additiv: state.measures) ---------- */
@@ -3069,12 +3154,13 @@ function exportBodyCSV(){
 
 /* ---------- Charts (SVG) ---------- */
 let chartN = 0;
-function lineChart(pts){
+function lineChart(pts, target){
   if(pts.length<2) return "";
   const W=560, H=190, P=30;
   const id = "lc"+(chartN++);
   const ys = pts.map(p=>p.y);
   let min = Math.min(...ys), max = Math.max(...ys);
+  if(typeof target==="number" && target>0){ min = Math.min(min, target); max = Math.max(max, target); }
   if(max-min<2){ min-=1; max+=1; }
   const pad = (max-min)*0.1; min-=pad; max+=pad;
   const X = i => P + i*(W-2*P)/(pts.length-1);
@@ -3083,9 +3169,17 @@ function lineChart(pts){
   const area = path + " L"+r1(X(pts.length-1))+","+(H-P)+" L"+r1(X(0))+","+(H-P)+" Z";
   const dots = pts.map((p,i)=>'<circle cx="'+r1(X(i))+'" cy="'+r1(Y(p.y))+'" r="3.6" fill="#a78bfa" stroke="var(--card-solid)" stroke-width="1.5"/>').join("");
   const first = pts[0], lastp = pts[pts.length-1];
+  let tline = "";
+  if(typeof target==="number" && target>0){
+    const ty = r1(Y(target));
+    const tly = ty<20 ? ty+15 : ty-6; // Label unter die Linie, wenn sie am oberen Rand liegt
+    tline = '<line x1="'+P+'" y1="'+ty+'" x2="'+(W-P)+'" y2="'+ty+'" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="6 5" opacity=".75"/>'
+      + '<text x="'+P+'" y="'+tly+'" fill="var(--green)" font-size="10.5" font-weight="600">Ziel '+r1(target)+'</text>';
+  }
   return '<svg class="chart" viewBox="0 0 '+W+' '+H+'">'
     + '<defs><linearGradient id="'+id+'a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.32"/><stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/></linearGradient>'
     + '<linearGradient id="'+id+'l" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#c084fc"/></linearGradient></defs>'
+    + tline
     + '<path d="'+area+'" fill="url(#'+id+'a)"/>'
     + '<path d="'+path+'" fill="none" stroke="url(#'+id+'l)" stroke-width="2.5" stroke-linecap="round"/>' + dots
     + '<text x="'+P+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11">'+fmtDate(first.x)+'</text>'
