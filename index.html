@@ -2333,7 +2333,7 @@ function renderTrainingBody(){
       for(const e of s.entries){
         h += '<div class="sexc"><b style="cursor:pointer" onclick="openExerciseDetail(\''+esc(e.exId)+'\')" title="Fortschritt anzeigen">'+esc(e.name)+' <span class="muted" style="font-size:11px">📈</span></b><div class="st">'+e.sets.map(st=>r1(st.kg)+" kg × "+st.reps).join("  ·  ")+'</div></div>';
       }
-      h += '<button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></details>';
+      h += '<div class="row" style="gap:8px; margin-top:4px"><button class="btn small ghost" onclick="shareWorkout(\''+s.id+'\')" title="Workout als Bild teilen">📤 Teilen</button><button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></div></details>';
     }
     el.innerHTML = h;
   }
@@ -2841,13 +2841,8 @@ function finishWorkout(){
   document.getElementById("workout-overlay").classList.remove("open");
   updateAwBar();
   renderTab(currentTab);
-  const vol = r0(sessionVolume(sess)).toLocaleString("de-DE");
-  toast("💪 Workout gespeichert: "+entries.length+" Übungen, "+vol+" kg Volumen");
-  if(prs.length){
-    const msg = prs.length===1 ? "🏆 Neuer Rekord: "+prs[0]
-      : "🏆 "+prs.length+" neue Rekorde: "+prs.slice(0,2).join(" · ")+(prs.length>2?" …":"");
-    setTimeout(()=>toast(msg), 2500);
-  }
+  toast("💪 Workout gespeichert: "+entries.length+" Übungen, "+r0(sessionVolume(sess)).toLocaleString("de-DE")+" kg Volumen");
+  showWorkoutSummary(sess, prs);
 }
 function cancelWorkout(silent){
   if(!silent && !confirm("Workout wirklich abbrechen? Eingetragene Sätze gehen verloren.")) return;
@@ -2858,6 +2853,143 @@ function cancelWorkout(silent){
   document.getElementById("workout-overlay").classList.remove("open");
   updateAwBar();
   renderTab(currentTab);
+}
+
+/* ---------- Workout-Zusammenfassung & Share-Card (rein abgeleitet, keine Speicheränderung) ---------- */
+let _lastShare = null;   // PRs des zuletzt beendeten Workouts (flüchtig, nur für die Share-Card)
+function sessionSetCount(s){ let n = 0; for(const e of s.entries) n += e.sets.length; return n; }
+function bestSetOf(e){
+  let best = null;
+  for(const st of e.sets) if(!best || (st.kg||0) > (best.kg||0) || ((st.kg||0) === (best.kg||0) && (st.reps||0) > (best.reps||0))) best = st;
+  return best;
+}
+function showWorkoutSummary(sess, prs){
+  _lastShare = {id: sess.id, prs: prs||[]};
+  const streak = loggingStreak();
+  let h = '<h3>💪 Workout geschafft!</h3>'
+    + '<p class="muted" style="margin-top:4px">'+esc(sess.name)+' · '+fmtDate(sess.date)+'</p>'
+    + '<div class="statgrid" style="margin-top:12px">'
+    + '<div class="stat"><b>'+(sess.durationMin||0)+' min</b><span>Dauer</span></div>'
+    + '<div class="stat"><b>'+r0(sessionVolume(sess)).toLocaleString("de-DE")+' kg</b><span>Volumen</span></div>'
+    + '<div class="stat"><b>'+sess.entries.length+'</b><span>Übung'+(sess.entries.length===1?'':'en')+'</span></div>'
+    + '<div class="stat"><b>'+sessionSetCount(sess)+'</b><span>Sätze</span></div></div>';
+  if(prs && prs.length){
+    h += '<div style="margin-top:12px; padding:10px 14px; border:1px solid var(--border); border-radius:14px">'
+      + prs.map(p=>'<div style="font-size:13.5px; padding:2px 0">🏆 Neuer Rekord: <b>'+esc(p)+'</b></div>').join("") + '</div>';
+  }
+  if(streak >= 2) h += '<p class="muted" style="text-align:center; margin-top:12px">🔥 '+streak+' Tage Streak – weiter so!</p>';
+  h += '<div class="row" style="margin-top:14px">'
+    + '<button class="btn ghost grow" onclick="closeModal()">Fertig</button>'
+    + '<button class="btn grow" onclick="shareWorkout(\''+sess.id+'\')">📤 Als Bild teilen</button></div>';
+  openModal(h);
+}
+function buildShareCard(s, prs){
+  const W = 1080, H = 1350;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  function rr(px,py,w,h,r){
+    x.beginPath();
+    x.moveTo(px+r,py);
+    x.arcTo(px+w,py,px+w,py+h,r);
+    x.arcTo(px+w,py+h,px,py+h,r);
+    x.arcTo(px,py+h,px,py,r);
+    x.arcTo(px,py,px+w,py,r);
+    x.closePath();
+  }
+  const bg = x.createLinearGradient(0,0,W,H);
+  bg.addColorStop(0,"#0b0e16"); bg.addColorStop(0.55,"#151329"); bg.addColorStop(1,"#221347");
+  x.fillStyle = bg; x.fillRect(0,0,W,H);
+  function glow(cx,cy,r,col){
+    const g = x.createRadialGradient(cx,cy,0,cx,cy,r);
+    g.addColorStop(0,col); g.addColorStop(1,"rgba(11,14,22,0)");
+    x.fillStyle = g; x.fillRect(cx-r,cy-r,r*2,r*2);
+  }
+  glow(W*0.88, H*0.10, 430, "rgba(168,85,247,0.30)");
+  glow(W*0.08, H*0.92, 500, "rgba(99,102,241,0.26)");
+  const F = 'Sora, Inter, system-ui, sans-serif';
+  x.fillStyle = "#a78bfa"; x.font = "700 34px "+F;
+  x.fillText("F I T T R A C K", 84, 140);
+  x.fillStyle = "#f4f4f8"; x.font = "700 76px "+F;
+  x.fillText(s.name.length>22 ? s.name.slice(0,21)+"…" : s.name, 84, 244);
+  x.fillStyle = "#9aa0b4"; x.font = "500 34px "+F;
+  x.fillText(fmtDate(s.date)+"  ·  "+(s.durationMin||0)+" min", 84, 304);
+  const stats = [
+    [r0(sessionVolume(s)).toLocaleString("de-DE"), "KG VOLUMEN"],
+    [String(sessionSetCount(s)), "SÄTZE"],
+    [String(s.entries.length), "ÜBUNGEN"]
+  ];
+  const bw = (W - 168 - 48) / 3;
+  stats.forEach(function(st, i){
+    const bx = 84 + i*(bw+24);
+    x.fillStyle = "rgba(255,255,255,0.06)"; rr(bx, 356, bw, 170, 26); x.fill();
+    x.strokeStyle = "rgba(255,255,255,0.12)"; x.lineWidth = 2; rr(bx, 356, bw, 170, 26); x.stroke();
+    x.textAlign = "center";
+    x.fillStyle = "#f4f4f8"; x.font = "700 52px "+F;
+    x.fillText(st[0], bx+bw/2, 440);
+    x.fillStyle = "#9aa0b4"; x.font = "600 22px "+F;
+    x.fillText(st[1], bx+bw/2, 490);
+    x.textAlign = "left";
+  });
+  let y = 620;
+  x.fillStyle = "#9aa0b4"; x.font = "600 26px "+F;
+  x.fillText("WORKOUT", 84, y); y += 24;
+  x.strokeStyle = "rgba(255,255,255,0.12)"; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(84, y); x.lineTo(W-84, y); x.stroke(); y += 58;
+  const maxRows = (prs && prs.length) ? 5 : 8;
+  const shown = s.entries.slice(0, maxRows);
+  for(const e of shown){
+    const b = bestSetOf(e);
+    x.fillStyle = "#e7e9f0"; x.font = "600 36px "+F;
+    x.fillText(e.name.length>24 ? e.name.slice(0,23)+"…" : e.name, 84, y);
+    if(b){
+      x.textAlign = "right";
+      x.fillStyle = "#a78bfa"; x.font = "700 36px "+F;
+      x.fillText(fmtKg(b.kg||0)+" kg × "+(b.reps||0), W-84, y);
+      x.textAlign = "left";
+    }
+    y += 62;
+  }
+  if(s.entries.length > shown.length){
+    x.fillStyle = "#9aa0b4"; x.font = "500 30px "+F;
+    x.fillText("+ "+(s.entries.length - shown.length)+" weitere Übungen", 84, y);
+    y += 62;
+  }
+  if(prs && prs.length){
+    y += 10;
+    for(const p of prs.slice(0,3)){
+      x.fillStyle = "#fbbf24"; x.font = "600 32px "+F;
+      const t = "🏆 "+p;
+      x.fillText(t.length>46 ? t.slice(0,45)+"…" : t, 84, y);
+      y += 52;
+    }
+  }
+  x.fillStyle = "#8b5cf6"; x.font = "700 30px "+F;
+  x.fillText("💪 Getrackt mit FitTrack", 84, H-84);
+  return c;
+}
+function shareWorkout(id){
+  const s = state.sessions.find(w=>w.id===id);
+  if(!s){ toast("Workout nicht gefunden"); return; }
+  const prs = (_lastShare && _lastShare.id===id) ? _lastShare.prs : [];
+  buildShareCard(s, prs).toBlob(async function(blob){
+    if(!blob){ toast("Bild konnte nicht erstellt werden"); return; }
+    const fname = "fittrack-workout-"+s.date+".png";
+    try{
+      if(navigator.share && navigator.canShare){
+        const file = new File([blob], fname, {type:"image/png"});
+        if(navigator.canShare({files:[file]})){
+          await navigator.share({files:[file], title:"FitTrack Workout", text:"Mein Workout – getrackt mit FitTrack 💪"});
+          return;
+        }
+      }
+    }catch(e){ if(e && e.name==="AbortError") return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+    toast("📤 Share-Card heruntergeladen – bereit zum Teilen");
+  }, "image/png");
 }
 
 /* ============================================================
