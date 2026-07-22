@@ -185,6 +185,16 @@
   .restpick{display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:center; margin-bottom:14px}
   .restpick .rc{background:var(--card2); border:1px solid var(--border); color:var(--muted); padding:6px 12px; border-radius:16px; font-size:12.5px; font-weight:600; transition:.2s}
   .restpick .rc.on{background:var(--grad); border-color:transparent; color:#fff; box-shadow:var(--glow)}
+  /* Muskel-Balance (Fortschritt-Tab) */
+  .mbrow{display:flex; align-items:center; gap:10px; margin-top:9px}
+  .mbrow .mbl{width:82px; flex-shrink:0; font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .mbrow .mbtrack{flex:1; height:10px; background:var(--card2); border:1px solid var(--border); border-radius:6px; overflow:hidden}
+  .mbrow .mbfill{height:100%; border-radius:6px; background:var(--grad); transition:width .6s ease}
+  .mbrow .mbv{width:74px; flex-shrink:0; text-align:right; font-size:11.5px; color:var(--muted)}
+  /* Scheiben-Rechner (Langhantel) */
+  .platewrap{display:flex; align-items:center; justify-content:center; gap:3px; min-height:96px; margin-top:12px}
+  .platewrap .pbar{width:44px; height:10px; border-radius:5px; background:var(--muted); opacity:.55; flex-shrink:0}
+  .platewrap .plate{width:15px; border-radius:4px; flex-shrink:0; box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.28)}
   /* Overlay-Ansicht (aktives Workout) */
   .overlay{position:fixed; inset:0; background:var(--bg); z-index:90; display:none; overflow-y:auto; max-width:640px; margin:0 auto; padding:16px 14px 40px}
   .overlay.open{display:block}
@@ -2677,6 +2687,71 @@ function restBeep(){
     setTimeout(()=>{ try{ctx.close();}catch(e){} }, 600);
   }catch(e){}
 }
+
+/* ---------- Scheiben-Rechner (Langhantel) – rein flüchtig, keine Speicheränderung ---------- */
+let plateCalcState = {kg:null, bar:20};
+const PLATE_SIZES = [25, 20, 15, 10, 5, 2.5, 1.25];
+const PLATE_STYLE = {25:["#ef4444",76], 20:["#3b82f6",76], 15:["#eab308",66], 10:["#22c55e",56], 5:["#e2e8f0",46], 2.5:["#475569",38], 1.25:["#94a3b8",32]};
+function fmtKg(v){ return (Math.round(v*100)/100).toLocaleString("de-DE"); }
+function plateSplit(total, bar){
+  const perSide = (total - bar) / 2;
+  const plates = [];
+  let rest = perSide;
+  if(perSide > 0){
+    for(const p of PLATE_SIZES){
+      while(rest >= p - 1e-9){ plates.push(p); rest -= p; }
+    }
+  }
+  return {perSide, plates, rest: Math.round(rest*100)/100};
+}
+function openPlateCalc(){
+  // Vorbelegung: schwerster kg-Wert im aktuellen Workout (falls vorhanden)
+  if(state.active){
+    let mx = 0;
+    for(const e of state.active.entries) for(const s of e.sets) if((s.kg||0) > mx) mx = s.kg;
+    if(mx > 0) plateCalcState.kg = mx;
+  }
+  openModal('<h3>🧮 Scheiben-Rechner</h3>'
+    + '<p class="muted" style="margin-top:4px">Welche Scheiben musst du pro Seite auf die Langhantel stecken?</p>'
+    + '<label>Zielgewicht gesamt (kg)</label><input type="number" inputmode="decimal" id="pc-kg" min="0" step="0.5" value="'+(plateCalcState.kg||"")+'" placeholder="z. B. 60" oninput="updPlateCalc()">'
+    + '<label>Stange</label><div class="restpick" style="justify-content:flex-start; margin:2px 0 0">'
+    + [10,15,20,25].map(b=>'<button class="rc'+(plateCalcState.bar===b?" on":"")+'" data-bar="'+b+'" onclick="setPlateBar('+b+')">'+b+' kg</button>').join("")
+    + '</div><div id="pc-out" aria-live="polite"></div>');
+  updPlateCalc();
+}
+function setPlateBar(b){
+  plateCalcState.bar = b;
+  document.querySelectorAll("#modal [data-bar]").forEach(el=>el.classList.toggle("on", +el.getAttribute("data-bar")===b));
+  updPlateCalc();
+}
+function updPlateCalc(){
+  const out = document.getElementById("pc-out");
+  if(!out) return;
+  const inp = document.getElementById("pc-kg");
+  const kg = num(inp ? inp.value : 0);
+  plateCalcState.kg = kg || null;
+  if(!(kg > 0)){ out.innerHTML = '<p class="muted" style="margin-top:14px">Gib dein Zielgewicht ein – z. B. 60 kg.</p>'; return; }
+  const bar = plateCalcState.bar;
+  if(kg < bar){ out.innerHTML = '<p class="muted" style="margin-top:14px">'+fmtKg(kg)+' kg ist leichter als die leere Stange ('+bar+' kg) – nimm eine leichtere Stange oder Kurzhanteln.</p>'; return; }
+  const r = plateSplit(kg, bar);
+  let h = '<div class="platewrap"><span class="pbar" title="Stange '+bar+' kg"></span>';
+  for(const p of r.plates){
+    const st = PLATE_STYLE[p] || ["#94a3b8",40];
+    h += '<span class="plate" style="background:'+st[0]+'; height:'+st[1]+'px" title="'+fmtKg(p)+' kg"></span>';
+  }
+  h += '</div>';
+  if(!r.plates.length){
+    h += '<p class="muted" style="text-align:center; margin-top:8px">Nur die leere Stange – '+fmtKg(bar)+' kg. 💪</p>';
+  } else {
+    h += '<p style="text-align:center; margin-top:8px"><b>Pro Seite: '+r.plates.map(fmtKg).join(" + ")+' kg</b></p>'
+      + '<p class="muted" style="text-align:center; font-size:12.5px; margin-top:4px">Stange '+fmtKg(bar)+' kg + 2 × '+fmtKg(r.perSide - r.rest)+' kg Scheiben</p>';
+  }
+  if(r.rest > 0){
+    const achievable = bar + 2*(r.perSide - r.rest);
+    h += '<p class="muted" style="text-align:center; font-size:12.5px; margin-top:6px">⚠️ '+fmtKg(kg)+' kg ist mit Standard-Scheiben nicht exakt steckbar – nächstmöglich: <b style="color:var(--text)">'+fmtKg(achievable)+' kg</b>.</p>';
+  }
+  out.innerHTML = h;
+}
 function renderActiveWorkout(){
   const aw = state.active;
   if(!aw) return;
@@ -2689,6 +2764,7 @@ function renderActiveWorkout(){
   const restOpts = [[0,"Aus"],[60,"60s"],[90,"90s"],[120,"120s"],[180,"180s"]];
   h += '<div class="restpick"><span class="rlabel" style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.6px">⏱ Pause</span>'
     + restOpts.map(o=>'<button class="rc'+(rs===o[0]?" on":"")+'" onclick="setRestSec('+o[0]+')">'+o[1]+'</button>').join("")
+    + '<button class="rc" onclick="openPlateCalc()" title="Scheiben-Rechner: Welche Scheiben auf die Langhantel?">🧮 Scheiben</button>'
     + '</div>';
 
   aw.entries.forEach((e,ei)=>{
@@ -2837,6 +2913,48 @@ function heatmapHtml(){
     + '<span class="heatlegend">Weniger <i class="hm0"></i><i class="hm1"></i><i class="hm2"></i><i class="hm3"></i><i class="hm4"></i> Mehr</span></div>';
 }
 
+/* ---------- Muskel-Balance (letzte 4 Wochen, rein abgeleitet – keine neuen Speicherdaten) ---------- */
+const MUSCLE_ORDER = ["Brust","Rücken","Schultern","Bizeps","Trizeps","Bauch","Beine","Po","Ganzkörper","Cardio","Sonstiges"];
+function muscleSplit(days){
+  const from = addDays(todayStr(), -(days-1));
+  const counts = {};
+  let total = 0;
+  for(const s of state.sessions){
+    if(s.date < from) continue;
+    for(const e of s.entries){
+      const ex = getExercise(e.exId);
+      const m = (ex && ex.muscle) ? ex.muscle : "Sonstiges";
+      const n = (e.sets||[]).length;
+      if(!n) continue;
+      counts[m] = (counts[m]||0) + n;
+      total += n;
+    }
+  }
+  return {counts, total};
+}
+function muscleCardHtml(){
+  const ms = muscleSplit(28);
+  let h = '<div class="card"><div class="cardhead"><span class="cicon">💪</span><h3>Muskel-Balance</h3><span class="muted">letzte 4 Wochen</span></div>';
+  if(!ms.total){
+    return h + emptyState('💪','Noch keine Workouts in den letzten 4 Wochen','Schließe ein Workout ab – hier siehst du dann, wie sich deine Sätze auf die Muskelgruppen verteilen.') + '</div>';
+  }
+  const groups = MUSCLE_ORDER.filter(m=>ms.counts[m])
+    .concat(Object.keys(ms.counts).filter(m=>!MUSCLE_ORDER.includes(m)).sort());
+  const max = Math.max.apply(null, groups.map(m=>ms.counts[m]));
+  for(const m of groups){
+    const c = ms.counts[m], pct = Math.round(c/ms.total*100);
+    h += '<div class="mbrow"><span class="mbl" title="'+esc(m)+'">'+esc(m)+'</span>'
+      + '<div class="mbtrack" role="img" aria-label="'+esc(m)+': '+c+' Sätze, '+pct+' Prozent"><div class="mbfill" style="width:'+Math.max(4, Math.round(c/max*100))+'%"></div></div>'
+      + '<span class="mbv">'+c+' '+(c===1?"Satz":"Sätze")+' · '+pct+'%</span></div>';
+  }
+  const core = ["Brust","Rücken","Schultern","Beine"];
+  const missing = core.filter(m=>!ms.counts[m]);
+  if(missing.length && missing.length < core.length){
+    h += '<p class="muted" style="font-size:12px; margin-top:12px">💡 In den letzten 4 Wochen nicht trainiert: '+missing.join(", ")+' – vielleicht beim nächsten Workout einplanen?</p>';
+  }
+  return h + '</div>';
+}
+
 function renderProgress(){
   let html = "";
 
@@ -2922,6 +3040,9 @@ function renderProgress(){
   html += '<div class="card"><h3>🏋️ Trainingsvolumen pro Woche (kg)</h3>'
     + barChart(weeks, null)
     + '<p class="muted" style="margin-top:6px">'+wkTotal+' Workouts insgesamt aufgezeichnet.</p></div>';
+
+  // Muskel-Balance (Sätze pro Muskelgruppe, letzte 4 Wochen)
+  html += muscleCardHtml();
 
   // Daten
   html += '<div class="card"><h3>💾 Daten</h3><p class="muted">Alle Daten liegen nur lokal in diesem Browser.</p>'
