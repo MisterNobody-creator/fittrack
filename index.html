@@ -2285,8 +2285,10 @@ function renderTrainingBody(){
         + '<button class="btn full green" style="margin-top:10px" onclick="openWorkoutOverlay()">Fortsetzen</button></div>';
     } else {
       h += '<div class="card"><h3>Neues Workout</h3>'
-        + '<button class="btn full" style="margin-top:8px" onclick="startWorkout(null)">🏋️ Freies Workout starten</button>'
-        + '<p class="muted" style="margin:12px 0 6px">… oder nach Plan trainieren:</p>';
+        + '<button class="btn full" style="margin-top:8px" onclick="startWorkout(null)">🏋️ Freies Workout starten</button>';
+      const lastSess = state.sessions.slice().sort((a,b)=>b.date.localeCompare(a.date) || (b.start||0)-(a.start||0))[0];
+      if(lastSess) h += '<button class="btn full ghost" style="margin-top:8px" onclick="repeatWorkout(\''+lastSess.id+'\')" title="Gleiche Übungen und Gewichte wie beim letzten Mal">🔁 Letztes wiederholen: '+esc(lastSess.name)+'</button>';
+      h += '<p class="muted" style="margin:12px 0 6px">… oder nach Plan trainieren:</p>';
       if(state.plans.length){
         for(const p of state.plans){
           h += '<div class="row between" style="padding:7px 0; border-top:1px solid var(--border)"><div><b style="font-size:14px">'+esc(p.name)+'</b><br><span class="muted">'+p.items.length+' Übungen</span></div>'
@@ -2330,10 +2332,11 @@ function renderTrainingBody(){
     if(!sess.length) h = emptyState('🏋️','Noch keine Workouts absolviert','Starte dein erstes Workout im Reiter „Workout“ – hier erscheint danach dein Trainings-Verlauf.');
     for(const s of sess){
       h += '<details class="sess"><summary><div><b style="font-size:14px">'+esc(s.name)+'</b><br><span class="muted" style="font-size:12px">'+fmtDate(s.date)+' · '+(s.durationMin||0)+' min · '+r0(sessionVolume(s)).toLocaleString("de-DE")+' kg Volumen</span></div><span class="muted">▾</span></summary><div class="body">';
+      if(s.note) h += '<div class="muted" style="font-size:12.5px; font-style:italic; margin-bottom:8px">📝 '+esc(s.note)+'</div>';
       for(const e of s.entries){
         h += '<div class="sexc"><b style="cursor:pointer" onclick="openExerciseDetail(\''+esc(e.exId)+'\')" title="Fortschritt anzeigen">'+esc(e.name)+' <span class="muted" style="font-size:11px">📈</span></b><div class="st">'+e.sets.map(st=>r1(st.kg)+" kg × "+st.reps).join("  ·  ")+'</div></div>';
       }
-      h += '<div class="row" style="gap:8px; margin-top:4px"><button class="btn small ghost" onclick="shareWorkout(\''+s.id+'\')" title="Workout als Bild teilen">📤 Teilen</button><button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></div></details>';
+      h += '<div class="row" style="gap:8px; margin-top:4px"><button class="btn small ghost" onclick="repeatWorkout(\''+s.id+'\')" title="Gleiches Workout erneut starten">🔁 Wiederholen</button><button class="btn small ghost" onclick="shareWorkout(\''+s.id+'\')" title="Workout als Bild teilen">📤 Teilen</button><button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></div></details>';
     }
     el.innerHTML = h;
   }
@@ -2587,6 +2590,24 @@ function startWorkoutFromPlan(id, isPreset){
   const plan = isPreset ? PRESET_PLANS.find(p=>p.id===id) : state.plans.find(p=>p.id===id);
   if(plan) startWorkout(plan);
 }
+function repeatWorkout(id){
+  const s = state.sessions.find(x=>x.id===id);
+  if(!s){ toast("Workout nicht gefunden"); return; }
+  if(state.active && !confirm("Es läuft bereits ein Workout. Neues starten und das alte verwerfen?")){ openWorkoutOverlay(); return; }
+  const entries = s.entries
+    .map(e=>({exId:e.exId, name:e.name, sets:e.sets.map(st=>({kg:st.kg||0, reps:st.reps||0, done:false}))}))
+    .filter(e=>e.sets.length);
+  if(!entries.length){ toast("Dieses Workout hat keine Sätze zum Wiederholen"); return; }
+  state.active = {name:s.name, start:Date.now(), entries};
+  save();
+  openWorkoutOverlay();
+  toast("🔁 Workout übernommen – Gewichte vom "+fmtDate(s.date)+" vorausgefüllt");
+}
+function awSetNote(v){
+  if(!state.active) return;
+  state.active.note = String(v).slice(0,500);
+  save();
+}
 function lastKgFor(exId){
   const sess = state.sessions.slice().sort((a,b)=>b.date.localeCompare(a.date));
   for(const s of sess){
@@ -2767,6 +2788,8 @@ function renderActiveWorkout(){
     + '<button class="rc" onclick="openPlateCalc()" title="Scheiben-Rechner: Welche Scheiben auf die Langhantel?">🧮 Scheiben</button>'
     + '</div>';
 
+  h += '<textarea rows="2" maxlength="500" placeholder="📝 Notiz zum Workout (optional) – z. B. Form, Energie, Besonderheiten" aria-label="Notiz zum Workout" style="margin:10px 0 2px; font-size:13px; resize:vertical" onchange="awSetNote(this.value)">'+esc(aw.note||"")+'</textarea>';
+
   aw.entries.forEach((e,ei)=>{
     const last = lastPerf(e.exId);
     h += '<div class="card aw-ex"><div class="row between"><h3 style="margin:0; cursor:pointer" onclick="openExerciseDetail(\''+e.exId+'\')">'+esc(e.name)+' <span class="muted" style="font-size:12px">ℹ️</span></h3>'
@@ -2833,6 +2856,8 @@ function finishWorkout(){
   const durationMin = Math.max(1, Math.round((Date.now()-aw.start)/60000));
   const prs = detectPRs(entries); // vor dem Speichern: Vergleich nur gegen bisherige Historie
   const sess = {id:"s-"+uid(), date:todayStr(), name:aw.name, start:aw.start, durationMin, entries};
+  const note = (aw.note||"").trim();
+  if(note) sess.note = note.slice(0,500);
   state.sessions.push(sess);
   state.active = null;
   save();
@@ -2877,6 +2902,7 @@ function showWorkoutSummary(sess, prs){
     h += '<div style="margin-top:12px; padding:10px 14px; border:1px solid var(--border); border-radius:14px">'
       + prs.map(p=>'<div style="font-size:13.5px; padding:2px 0">🏆 Neuer Rekord: <b>'+esc(p)+'</b></div>').join("") + '</div>';
   }
+  if(sess.note) h += '<p class="muted" style="font-style:italic; font-size:13px; margin-top:10px">📝 '+esc(sess.note)+'</p>';
   if(streak >= 2) h += '<p class="muted" style="text-align:center; margin-top:12px">🔥 '+streak+' Tage Streak – weiter so!</p>';
   h += '<div class="row" style="margin-top:14px">'
     + '<button class="btn ghost grow" onclick="closeModal()">Fertig</button>'
