@@ -2336,7 +2336,7 @@ function renderTrainingBody(){
       for(const e of s.entries){
         h += '<div class="sexc"><b style="cursor:pointer" onclick="openExerciseDetail(\''+esc(e.exId)+'\')" title="Fortschritt anzeigen">'+esc(e.name)+' <span class="muted" style="font-size:11px">📈</span></b><div class="st">'+e.sets.map(st=>r1(st.kg)+" kg × "+st.reps).join("  ·  ")+'</div></div>';
       }
-      h += '<div class="row" style="gap:8px; margin-top:4px"><button class="btn small ghost" onclick="repeatWorkout(\''+s.id+'\')" title="Gleiches Workout erneut starten">🔁 Wiederholen</button><button class="btn small ghost" onclick="shareWorkout(\''+s.id+'\')" title="Workout als Bild teilen">📤 Teilen</button><button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></div></details>';
+      h += '<div class="row" style="gap:8px; margin-top:4px"><button class="btn small ghost" onclick="repeatWorkout(\''+s.id+'\')" title="Gleiches Workout erneut starten">🔁 Wiederholen</button><button class="btn small ghost" onclick="shareWorkout(\''+s.id+'\')" title="Workout als Bild teilen">📤 Teilen</button><button class="btn small ghost" onclick="saveSessionAsPlan(\''+s.id+'\')" title="Übungen und Sätze dieses Workouts als Trainingsplan speichern">📋 Als Plan</button><button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></div></details>';
     }
     el.innerHTML = h;
   }
@@ -2504,7 +2504,9 @@ function renderPlanEditor(){
       + '<span class="muted" style="font-size:11px">Sätze ×</span>'
       + '<input type="number" value="'+it.reps+'" min="1" style="width:56px; text-align:center; padding:6px" title="Wiederholungen" onchange="planDraft.items['+i+'].reps=Math.max(1,Math.round(this.value*1||1))">'
       + '<span class="muted" style="font-size:11px">Wdh.</span>'
-      + '<button class="del" style="color:var(--red); background:none" onclick="planDraft.items.splice('+i+',1); renderPlanEditor()">🗑</button></div>';
+      + '<button class="del" style="color:var(--muted); background:none'+(i===0?'; opacity:.25; pointer-events:none':'')+'" aria-label="Übung nach oben verschieben" title="Nach oben" onclick="planMoveItem('+i+',-1)">▲</button>'
+      + '<button class="del" style="color:var(--muted); background:none'+(i===p.items.length-1?'; opacity:.25; pointer-events:none':'')+'" aria-label="Übung nach unten verschieben" title="Nach unten" onclick="planMoveItem('+i+',1)">▼</button>'
+      + '<button class="del" style="color:var(--red); background:none" aria-label="Übung entfernen" onclick="planDraft.items.splice('+i+',1); renderPlanEditor()">🗑</button></div>';
   });
   h += '<button class="btn ghost full" onclick="openExercisePicker(function(id){ planDraft.items.push({exId:id, sets:3, reps:10}); renderPlanEditor(); })">＋ Übung hinzufügen</button>'
     + '<div class="row" style="margin-top:14px">';
@@ -2512,6 +2514,12 @@ function renderPlanEditor(){
     h += '<button class="btn danger" onclick="deletePlan(\''+p.id+'\')">Löschen</button>';
   h += '<button class="btn grow" onclick="savePlan()">Plan speichern</button></div>';
   openModal(h);
+}
+function planMoveItem(i, dir){
+  const arr = planDraft.items, j = i + dir;
+  if(j < 0 || j >= arr.length) return;
+  const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  renderPlanEditor();
 }
 function savePlan(){
   const p = planDraft;
@@ -2602,6 +2610,28 @@ function repeatWorkout(id){
   save();
   openWorkoutOverlay();
   toast("🔁 Workout übernommen – Gewichte vom "+fmtDate(s.date)+" vorausgefüllt");
+}
+function sessionToPlanItems(s){
+  return s.entries.filter(e=>e.sets.length).map(e=>{
+    // Wdh.-Vorgabe: häufigster Wiederholungs-Wert der Sätze (bei Gleichstand der höhere)
+    const counts = {};
+    for(const st of e.sets){ const r = Math.round(st.reps||0); counts[r] = (counts[r]||0)+1; }
+    let reps = 10, best = 0;
+    for(const k of Object.keys(counts)){ const n = counts[k], v = parseInt(k,10); if(n > best || (n === best && v > reps)){ best = n; reps = v; } }
+    return {exId:e.exId, sets:e.sets.length, reps:Math.max(1, reps)};
+  });
+}
+function saveSessionAsPlan(id){
+  const s = state.sessions.find(x=>x.id===id);
+  if(!s){ toast("Workout nicht gefunden"); return; }
+  const items = sessionToPlanItems(s);
+  if(!items.length){ toast("Dieses Workout hat keine Sätze"); return; }
+  const name = (prompt("Name für den neuen Plan:", s.name) || "").trim();
+  if(!name) return;
+  state.plans.push({id:"pl-"+uid(), name, items});
+  save();
+  if(document.getElementById("training-body")) renderTrainingBody();
+  toast("📋 Plan gespeichert ✓ – unter „Pläne“");
 }
 function awSetNote(v){
   if(!state.active) return;
@@ -2793,7 +2823,10 @@ function renderActiveWorkout(){
   aw.entries.forEach((e,ei)=>{
     const last = lastPerf(e.exId);
     h += '<div class="card aw-ex"><div class="row between"><h3 style="margin:0; cursor:pointer" onclick="openExerciseDetail(\''+e.exId+'\')">'+esc(e.name)+' <span class="muted" style="font-size:12px">ℹ️</span></h3>'
-      + '<button class="del" style="color:var(--red); background:none" onclick="awRemoveExercise('+ei+')">🗑</button></div>'
+      + '<div class="row" style="gap:0">'
+      + '<button class="del" style="color:var(--muted); background:none'+(ei===0?'; opacity:.25; pointer-events:none':'')+'" aria-label="Übung nach oben verschieben" title="Nach oben" onclick="awMoveExercise('+ei+',-1)">▲</button>'
+      + '<button class="del" style="color:var(--muted); background:none'+(ei===aw.entries.length-1?'; opacity:.25; pointer-events:none':'')+'" aria-label="Übung nach unten verschieben" title="Nach unten" onclick="awMoveExercise('+ei+',1)">▼</button>'
+      + '<button class="del" style="color:var(--red); background:none" aria-label="Übung entfernen" onclick="awRemoveExercise('+ei+')">🗑</button></div></div>'
       + (last?'<div class="hint">Letztes Mal: '+last+'</div>':'')
       + '<div class="setrow" style="margin-top:6px"><span class="num">#</span><span class="num">kg</span><span class="num">Wdh.</span><span></span></div>';
     e.sets.forEach((st,si)=>{
@@ -2842,6 +2875,12 @@ function awAddExercise(id){
 }
 function awRemoveExercise(ei){
   state.active.entries.splice(ei,1);
+  save(); renderActiveWorkout();
+}
+function awMoveExercise(ei, dir){
+  const arr = state.active.entries, j = ei + dir;
+  if(j < 0 || j >= arr.length) return;
+  const t = arr[ei]; arr[ei] = arr[j]; arr[j] = t;
   save(); renderActiveWorkout();
 }
 function finishWorkout(){
@@ -2904,7 +2943,8 @@ function showWorkoutSummary(sess, prs){
   }
   if(sess.note) h += '<p class="muted" style="font-style:italic; font-size:13px; margin-top:10px">📝 '+esc(sess.note)+'</p>';
   if(streak >= 2) h += '<p class="muted" style="text-align:center; margin-top:12px">🔥 '+streak+' Tage Streak – weiter so!</p>';
-  h += '<div class="row" style="margin-top:14px">'
+  h += '<button class="btn ghost full" style="margin-top:14px" onclick="saveSessionAsPlan(\''+sess.id+'\')" title="Übungen und Sätze dieses Workouts als Trainingsplan speichern">📋 Als Plan speichern</button>';
+  h += '<div class="row" style="margin-top:10px">'
     + '<button class="btn ghost grow" onclick="closeModal()">Fertig</button>'
     + '<button class="btn grow" onclick="shareWorkout(\''+sess.id+'\')">📤 Als Bild teilen</button></div>';
   openModal(h);
