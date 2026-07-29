@@ -195,6 +195,18 @@
   .platewrap{display:flex; align-items:center; justify-content:center; gap:3px; min-height:96px; margin-top:12px}
   .platewrap .pbar{width:44px; height:10px; border-radius:5px; background:var(--muted); opacity:.55; flex-shrink:0}
   .platewrap .plate{width:15px; border-radius:4px; flex-shrink:0; box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.28)}
+  /* Intervall-Timer (HIIT) */
+  .itview{border-radius:18px; padding:26px 16px 20px; text-align:center; margin-top:12px; border:1px solid var(--border); background:var(--card2); transition:background .4s, border-color .4s}
+  .itview .itphase{font-size:13px; font-weight:800; letter-spacing:2.5px; text-transform:uppercase; color:var(--muted)}
+  .itview .ittime{font-size:64px; font-weight:800; line-height:1.1; font-variant-numeric:tabular-nums; margin:4px 0 2px}
+  .itview .itround{font-size:13px; color:var(--muted)}
+  .itview .itbar{height:8px; background:var(--card-solid); border:1px solid var(--border); border-radius:5px; overflow:hidden; margin-top:14px}
+  .itview .itfill{height:100%; border-radius:5px; background:var(--grad); transition:width .25s linear}
+  .itview.work{background:rgba(139,92,246,.16); border-color:var(--accent)}
+  .itview.work .itphase{color:var(--accent)}
+  .itview.rest{background:rgba(34,197,94,.13); border-color:var(--green)}
+  .itview.rest .itphase{color:var(--green)}
+  .itview.rest .itfill{background:var(--green)}
   /* Overlay-Ansicht (aktives Workout) */
   .overlay{position:fixed; inset:0; background:var(--bg); z-index:90; display:none; overflow-y:auto; max-width:640px; margin:0 auto; padding:16px 14px 40px}
   .overlay.open{display:block}
@@ -1240,7 +1252,7 @@ function loggingStreak(){
 }
 function weekStats(monday){
   const end = addDays(monday,6);
-  let kcal=0, days=0, water=0, workouts=0, vol=0;
+  let kcal=0, days=0, water=0, workouts=0, vol=0, steps=0;
   for(let i=0;i<7;i++){
     const ds = addDays(monday,i);
     if(ds>todayStr()) break;
@@ -1248,10 +1260,11 @@ function weekStats(monday){
       const t = dayTotals(ds);
       if(t.kcal>0){ kcal += t.kcal; days++; }
       water += state.diary[ds].water||0;
+      steps += state.diary[ds].steps||0;
     }
   }
   for(const s of state.sessions) if(s.date>=monday && s.date<=end){ workouts++; vol += sessionVolume(s); }
-  return {avgKcal: days ? kcal/days : 0, days, water, workouts, vol};
+  return {avgKcal: days ? kcal/days : 0, days, water, workouts, vol, steps};
 }
 function trendMark(cur, prev, goodDown){
   const diff = cur - prev;
@@ -2309,6 +2322,9 @@ function renderTrainingBody(){
     let vol = 0; for(const s of weekSessions) vol += sessionVolume(s);
     h += '<div class="statgrid"><div class="stat"><b>'+weekSessions.length+'</b><span>Workouts diese Woche</span></div>'
       + '<div class="stat"><b>'+r0(vol).toLocaleString("de-DE")+' kg</b><span>Volumen diese Woche</span></div></div>';
+    h += '<div class="card"><div class="row between"><div><h3 style="margin:0">⏱ Intervall-Timer</h3>'
+      + '<span class="muted" style="font-size:12.5px">HIIT, Tabata & Zirkeltraining mit Signalton</span></div>'
+      + '<button class="btn small" onclick="openIntervalTimer()">Öffnen</button></div></div>';
     el.innerHTML = h;
   }
   else if(trainingSub==="plans"){
@@ -2803,6 +2819,169 @@ function updPlateCalc(){
   }
   out.innerHTML = h;
 }
+
+/* ---------- Intervall-Timer (HIIT/Tabata) – rein flüchtig, keine Speicheränderung ---------- */
+let itCfg = {work:20, rest:10, rounds:8};
+let itRun = null;   // {phase, round, phaseEnd, phaseLen, paused, remMs, timer, lastBeep, workStart, wl}
+const IT_PRESETS = [[20,10,8,"Tabata 20/10 × 8"],[30,15,8,"30/15 × 8"],[40,20,10,"40/20 × 10"],[60,30,6,"60/30 × 6"]];
+function itFmt(sec){ return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0"); }
+function itTotalSec(w,r,n){ return n*w + Math.max(0,n-1)*r; }
+function openIntervalTimer(){
+  itCleanup();
+  openModal('<h3>⏱ Intervall-Timer</h3>'
+    + '<p class="muted" style="margin-top:4px">Für HIIT, Tabata und Zirkeltraining: Belastung und Pause im Wechsel – mit Signalton und Rundenzähler.</p>'
+    + '<div class="chips" style="margin-top:10px">'+IT_PRESETS.map(p=>'<button class="chip" onclick="itSetPreset('+p[0]+','+p[1]+','+p[2]+')">'+p[3]+'</button>').join("")+'</div>'
+    + '<div class="row">'
+    + '<div class="grow"><label>Belastung (s)</label><input type="number" inputmode="numeric" id="it-work" min="5" max="600" value="'+itCfg.work+'" oninput="itUpdTotal()"></div>'
+    + '<div class="grow"><label>Pause (s)</label><input type="number" inputmode="numeric" id="it-rest" min="0" max="600" value="'+itCfg.rest+'" oninput="itUpdTotal()"></div>'
+    + '<div class="grow"><label>Runden</label><input type="number" inputmode="numeric" id="it-rounds" min="1" max="50" value="'+itCfg.rounds+'" oninput="itUpdTotal()"></div>'
+    + '</div><p class="muted" id="it-total" style="margin-top:8px"></p>'
+    + '<button class="btn full" style="margin-top:10px" onclick="startIntervals()">▶ Los geht\'s</button>');
+  itUpdTotal();
+}
+function itSetPreset(w,r,n){
+  const W=document.getElementById("it-work"), R=document.getElementById("it-rest"), N=document.getElementById("it-rounds");
+  if(W) W.value=w; if(R) R.value=r; if(N) N.value=n;
+  itUpdTotal();
+}
+function itUpdTotal(){
+  const el = document.getElementById("it-total");
+  if(!el) return;
+  const w=num(document.getElementById("it-work").value), r=num(document.getElementById("it-rest").value), n=num(document.getElementById("it-rounds").value);
+  el.textContent = (w>=1 && n>=1) ? "Gesamtdauer: "+itFmt(itTotalSec(r0(w),r0(r),r0(n)))+" min (+ 5 s Countdown)" : "";
+}
+function startIntervals(){
+  const w=r0(num(document.getElementById("it-work").value)), r=r0(num(document.getElementById("it-rest").value)), n=r0(num(document.getElementById("it-rounds").value));
+  if(w<5){ toast("Belastung: mindestens 5 Sekunden"); return; }
+  if(n<1){ toast("Mindestens 1 Runde"); return; }
+  itCfg = {work:w, rest:Math.max(0,r), rounds:n};
+  itRun = {phase:"ready", round:1, phaseLen:5, phaseEnd:Date.now()+5000, paused:false, remMs:0, timer:null, lastBeep:99, workStart:0, wl:null};
+  const m = document.getElementById("modal");
+  m.innerHTML = '<button class="mclose" onclick="closeModal()" aria-label="Dialog schließen">✕</button><h3>⏱ Intervall-Timer</h3>'
+    + '<div class="itview" id="it-view"><div class="itphase" id="it-phase" aria-live="polite">Bereit machen …</div>'
+    + '<div class="ittime" id="it-time">0:05</div><div class="itround" id="it-round"></div>'
+    + '<div class="itbar"><div class="itfill" id="it-fill" style="width:100%"></div></div></div>'
+    + '<div class="row" style="gap:8px; margin-top:14px">'
+    + '<button class="btn ghost grow" id="it-pause" onclick="itPause()">⏸ Pause</button>'
+    + '<button class="btn ghost grow" style="color:var(--red)" onclick="itStop()">■ Beenden</button></div>';
+  if(navigator.wakeLock && navigator.wakeLock.request){
+    navigator.wakeLock.request("screen").then(l=>{ if(itRun) itRun.wl=l; else { try{l.release();}catch(e){} } }).catch(()=>{});
+  }
+  itRun.timer = setInterval(itTick, 200);
+  itTick();
+}
+function itPhaseLabel(){
+  if(!itRun) return "";
+  return itRun.phase==="ready" ? "Bereit machen …" : itRun.phase==="work" ? "💥 Belastung" : "😮‍💨 Pause";
+}
+function itAdvance(now){
+  // nächste Phase (kann bei Tab-Drosselung mehrere Phasen überspringen)
+  if(itRun.phase==="ready"){
+    itRun.phase="work"; itRun.workStart = itRun.workStart || now;
+  } else if(itRun.phase==="work"){
+    if(itRun.round>=itCfg.rounds){ itRun.phase="done"; return; }
+    if(itCfg.rest>0){ itRun.phase="rest"; }
+    else { itRun.round++; }
+  } else { // rest
+    itRun.phase="work"; itRun.round++;
+  }
+  itRun.phaseLen = itRun.phase==="work" ? itCfg.work : itCfg.rest;
+  itRun.phaseEnd += itRun.phaseLen*1000;
+  itRun.lastBeep = 99;
+}
+function itTick(){
+  if(!itRun) return;
+  const v = document.getElementById("it-view");
+  if(!v){ itCleanup(); return; }   // Modal wurde geschlossen (ESC / ✕)
+  if(itRun.paused) return;
+  const now = Date.now();
+  let guard = 0;
+  while(now >= itRun.phaseEnd && itRun.phase!=="done" && guard++ < 200){
+    const prev = itRun.phase;
+    itAdvance(now);
+    if(itRun.phase!=="done" && itRun.phaseEnd > now){
+      itBeep(itRun.phase==="work" ? "go" : "rest");
+      if(navigator.vibrate){ try{ navigator.vibrate(itRun.phase==="work" ? [150] : [60,40,60]); }catch(e){} }
+    }
+  }
+  if(itRun.phase==="done"){ itFinish(now); return; }
+  const remMs = itRun.phaseEnd - now;
+  const rem = Math.max(0, Math.ceil(remMs/1000));
+  if(rem<=3 && rem>=1 && rem<itRun.lastBeep){ itRun.lastBeep = rem; itBeep("tick"); }
+  v.className = "itview"+(itRun.phase==="work"?" work":itRun.phase==="rest"?" rest":"");
+  document.getElementById("it-phase").textContent = itPhaseLabel();
+  document.getElementById("it-time").textContent = itFmt(rem);
+  document.getElementById("it-round").textContent = itRun.phase==="ready" ? itCfg.rounds+" Runden · "+itCfg.work+" s Belastung / "+itCfg.rest+" s Pause" : "Runde "+itRun.round+" / "+itCfg.rounds;
+  document.getElementById("it-fill").style.width = (itRun.phaseLen>0 ? Math.max(0,Math.min(100, remMs/(itRun.phaseLen*1000)*100)) : 0)+"%";
+}
+function itPause(){
+  if(!itRun || itRun.phase==="done") return;
+  const btn = document.getElementById("it-pause");
+  if(!itRun.paused){
+    itRun.paused = true;
+    itRun.remMs = Math.max(0, itRun.phaseEnd - Date.now());
+    if(btn) btn.textContent = "▶ Weiter";
+    const p = document.getElementById("it-phase");
+    if(p) p.textContent = "⏸ Pausiert";
+  } else {
+    itRun.paused = false;
+    itRun.phaseEnd = Date.now() + itRun.remMs;
+    if(btn) btn.textContent = "⏸ Pause";
+    itTick();
+  }
+}
+function itStop(){ openIntervalTimer(); }
+function itFinish(now){
+  const elapsedMin = Math.max(1, Math.round((now - (itRun.workStart||now))/60000));
+  const kcal = r0(elapsedMin*12);   // HIIT ≈ 12 kcal/min (wie Aktivitäts-Vorlage)
+  itCleanup();
+  itBeep("done");
+  if(navigator.vibrate){ try{ navigator.vibrate([120,60,120,60,200]); }catch(e){} }
+  const m = document.getElementById("modal");
+  if(!m || !document.getElementById("it-view")) return;
+  m.innerHTML = '<button class="mclose" onclick="closeModal()" aria-label="Dialog schließen">✕</button><h3>⏱ Intervall-Timer</h3>'
+    + '<div class="itview"><div class="itphase" style="color:var(--green)">Geschafft! 🎉</div>'
+    + '<div class="ittime" style="font-size:44px">'+itCfg.rounds+' Runden</div>'
+    + '<div class="itround">'+itCfg.work+' s Belastung / '+itCfg.rest+' s Pause · ca. '+elapsedMin+' min</div></div>'
+    + '<button class="btn full" style="margin-top:14px" onclick="itLogActivity('+elapsedMin+','+kcal+')">🔥 Als Aktivität loggen (≈ '+kcal+' kcal)</button>'
+    + '<button class="btn ghost full" style="margin-top:8px" onclick="closeModal()">Schließen</button>';
+}
+function itLogActivity(min, kcal){
+  getDay(todayStr()).activities.push({id:uid(), name:"Intervall-Training (HIIT)", min:r0(min), kcal:r0(kcal)});
+  save(); closeModal();
+  if(currentTab==="dashboard") renderDashboard();
+  if(currentTab==="nutrition") renderNutrition();
+  toast("Aktivität geloggt: "+r0(kcal)+" kcal 🔥");
+}
+function itCleanup(){
+  if(itRun){
+    if(itRun.timer) clearInterval(itRun.timer);
+    if(itRun.wl){ try{ itRun.wl.release(); }catch(e){} }
+  }
+  itRun = null;
+}
+function itBeep(kind){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    const ctx = new AC();
+    const seq = kind==="tick" ? [[0,660,.12]]
+      : kind==="go" ? [[0,880,.14],[0.15,1175,.18]]
+      : kind==="rest" ? [[0,587,.16]]
+      : [[0,784,.14],[0.16,988,.14],[0.32,1319,.22]];   // done
+    for(const s of seq){
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = s[1];
+      o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime + s[0];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+s[2]);
+      o.start(t); o.stop(t+s[2]+0.01);
+    }
+    setTimeout(()=>{ try{ctx.close();}catch(e){} }, 900);
+  }catch(e){}
+}
 function renderActiveWorkout(){
   const aw = state.active;
   if(!aw) return;
@@ -3160,12 +3339,13 @@ function renderProgress(){
   const thisMon = mondayOf(todayStr());
   const cur = weekStats(thisMon), prev = weekStats(addDays(thisMon,-7));
   html += '<div class="card"><div class="cardhead"><span class="cicon">📅</span><h3>Wochenrückblick</h3><span class="muted">vs. Vorwoche</span></div>';
-  if(cur.days===0 && cur.workouts===0 && prev.days===0 && prev.workouts===0){
+  if(cur.days===0 && cur.workouts===0 && prev.days===0 && prev.workouts===0 && cur.steps===0 && prev.steps===0 && cur.water===0 && prev.water===0){
     html += emptyState('📅','Noch keine Daten diese Woche','Trage Mahlzeiten ein oder starte ein Workout – hier erscheint dann dein Vergleich zur Vorwoche.');
   } else {
     html += wkRow("Ø Kalorien/Tag", r0(cur.avgKcal)+" kcal", r0(prev.avgKcal)+" kcal", trendMark(cur.avgKcal, prev.avgKcal, state.profile.goal==="abnehmen"))
       + wkRow("Workouts", cur.workouts, prev.workouts, trendMark(cur.workouts, prev.workouts, false))
       + wkRow("Trainingsvolumen", r0(cur.vol).toLocaleString("de-DE")+" kg", r0(prev.vol).toLocaleString("de-DE")+" kg", trendMark(cur.vol, prev.vol, false))
+      + wkRow("Schritte", r0(cur.steps).toLocaleString("de-DE"), r0(prev.steps).toLocaleString("de-DE"), trendMark(cur.steps, prev.steps, false))
       + wkRow("Wasser (Gläser)", cur.water, prev.water, trendMark(cur.water, prev.water, false));
   }
   html += '</div>';
