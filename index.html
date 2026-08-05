@@ -417,7 +417,7 @@
   <div class="logo">Fit<b>Track</b></div>
   <div class="row" style="gap:10px">
     <span class="hdate" id="hdate"></span>
-    <button class="tbtn" id="theme-btn" onclick="toggleTheme()" title="Hell/Dunkel wechseln" aria-label="Design wechseln (hell/dunkel)">☀️</button>
+    <button class="tbtn" id="theme-btn" onclick="toggleTheme()" title="Design wechseln (dunkel / hell / automatisch)" aria-label="Design wechseln (dunkel, hell oder automatisch)">☀️</button>
   </div>
 </header>
 
@@ -1454,7 +1454,12 @@ function renderDashboard(){
     }
     html += '<button class="btn ghost full" style="margin-top:12px" onclick="switchTab(\'training\')">Weiteres Workout starten</button>';
   } else {
-    html += '<p class="muted">Noch kein Workout heute.</p><button class="btn full" style="margin-top:12px" onclick="switchTab(\'training\')">🏋️ Workout starten</button>';
+    const tp = todayPlanHtml();
+    if(tp){
+      html += tp + '<button class="btn ghost full" style="margin-top:12px" onclick="switchTab(\'training\')">Alle Trainingsoptionen</button>';
+    } else {
+      html += '<p class="muted">Noch kein Workout heute.</p><button class="btn full" style="margin-top:12px" onclick="switchTab(\'training\')">🏋️ Workout starten</button>';
+    }
   }
   html += '</div>';
 
@@ -2304,7 +2309,7 @@ function renderTrainingBody(){
       h += '<p class="muted" style="margin:12px 0 6px">… oder nach Plan trainieren:</p>';
       if(state.plans.length){
         for(const p of state.plans){
-          h += '<div class="row between" style="padding:7px 0; border-top:1px solid var(--border)"><div><b style="font-size:14px">'+esc(p.name)+'</b><br><span class="muted">'+p.items.length+' Übungen</span></div>'
+          h += '<div class="row between" style="padding:7px 0; border-top:1px solid var(--border)"><div><b style="font-size:14px">'+esc(p.name)+'</b><br><span class="muted">'+p.items.length+' Übungen'+(planDaysLabel(p)?' · 📅 '+planDaysLabel(p):'')+'</span></div>'
             + '<button class="btn small" onclick="startWorkoutFromPlan(\''+p.id+'\',false)">Start</button></div>';
         }
       } else {
@@ -2331,7 +2336,7 @@ function renderTrainingBody(){
     let h = '<button class="btn full" onclick="openPlanEditor(null)">＋ Neuen Plan erstellen</button><h2>Meine Pläne</h2>';
     if(!state.plans.length) h += emptyState('📋','Noch keine eigenen Pläne','Tippe oben auf „＋ Neuen Plan erstellen“ oder übernimm unten eine Vorlage.');
     for(const p of state.plans){
-      h += '<div class="listitem"><div class="info grow"><b>'+esc(p.name)+'</b><span>'+p.items.map(i=>{const e=getExercise(i.exId); return e?e.name:"?";}).join(", ")+'</span></div>'
+      h += '<div class="listitem"><div class="info grow"><b>'+esc(p.name)+(planDaysLabel(p)?' <span class="muted" style="font-size:11px; font-weight:400">📅 '+planDaysLabel(p)+'</span>':'')+'</b><span>'+p.items.map(i=>{const e=getExercise(i.exId); return e?e.name:"?";}).join(", ")+'</span></div>'
         + '<button class="btn small ghost" onclick="openPlanEditor(\''+p.id+'\')">✎</button>'
         + '<button class="btn small" onclick="startWorkoutFromPlan(\''+p.id+'\',false)">Start</button></div>';
     }
@@ -2495,6 +2500,46 @@ function mondayOf(ds){
   return dateStr(d);
 }
 
+/* ---------- Trainingssplit: Wochentage pro Plan (additiv, optional) ---------- */
+const WD_SHORT = ["So","Mo","Di","Mi","Do","Fr","Sa"];
+const WD_ORDER = [1,2,3,4,5,6,0];   // Anzeige-Reihenfolge Mo–So (JS-getDay-Werte)
+function planDays(p){ return Array.isArray(p.days) ? p.days : []; }
+function planDaysLabel(p){
+  const d = planDays(p);
+  if(!d.length) return "";
+  return WD_ORDER.filter(x=>d.includes(x)).map(x=>WD_SHORT[x]).join(" · ");
+}
+function plansForDay(dow){ return state.plans.filter(p=>planDays(p).includes(dow)); }
+function anyScheduledPlans(){ return state.plans.some(p=>planDays(p).length>0); }
+function nextPlannedInfo(){
+  for(let i=1;i<=7;i++){
+    const ds = addDays(todayStr(), i);
+    const dow = new Date(ds+"T12:00:00").getDay();
+    const hits = plansForDay(dow);
+    if(hits.length) return {plan:hits[0], dow:dow, inDays:i};
+  }
+  return null;
+}
+function todayPlanHtml(){
+  // Für die Karte „Training heute": heute geplante Pläne bzw. Ruhetag-Hinweis.
+  // Leerer String, wenn der Nutzer gar keine Trainingstage vergeben hat (Karte bleibt wie bisher).
+  if(!anyScheduledPlans()) return "";
+  const dow = new Date(todayStr()+"T12:00:00").getDay();
+  const due = plansForDay(dow);
+  if(due.length){
+    let h = "";
+    for(const p of due){
+      h += '<div class="row between" style="padding:6px 0"><div><b style="font-size:14px">📅 Heute dran: '+esc(p.name)+'</b><br><span class="muted" style="font-size:12px">'+p.items.length+' Übungen · dein Plan für '+WD_SHORT[dow]+'</span></div>'
+        + '<button class="btn small" onclick="startWorkoutFromPlan(\''+p.id+'\',false)">Start</button></div>';
+    }
+    return h;
+  }
+  const nx = nextPlannedInfo();
+  let t = '😌 Heute ist Ruhetag.';
+  if(nx) t += ' Als Nächstes: <b style="color:var(--text)">'+esc(nx.plan.name)+'</b> '+(nx.inDays===1 ? 'morgen' : 'am '+WD_SHORT[nx.dow])+'.';
+  return '<p class="muted" style="margin:2px 0 0">'+t+'</p>';
+}
+
 /* ---------- Plan-Editor ---------- */
 let planDraft = null;
 function openPlanEditor(planId){
@@ -2502,7 +2547,7 @@ function openPlanEditor(planId){
     const p = state.plans.find(x=>x.id===planId);
     planDraft = JSON.parse(JSON.stringify(p));
   } else {
-    planDraft = {id:"pl-"+uid(), name:"", items:[]};
+    planDraft = {id:"pl-"+uid(), name:"", items:[], days:[]};
   }
   renderPlanEditor();
 }
@@ -2510,6 +2555,10 @@ function renderPlanEditor(){
   const p = planDraft;
   let h = '<h3>'+(state.plans.some(x=>x.id===p.id)?"Plan bearbeiten":"Neuer Plan")+'</h3>'
     + '<label>Name des Plans</label><input id="plan-name" value="'+esc(p.name)+'" placeholder="z. B. Push Tag A" oninput="planDraft.name=this.value">'
+    + '<label style="margin-top:14px">Trainingstage <span class="muted" style="font-size:11px; font-weight:400">(optional – zeigt „Heute dran" am Dashboard)</span></label>'
+    + '<div class="chips">'
+    + WD_ORDER.map(d=>'<button class="chip'+(planDays(p).includes(d)?" on":"")+'" onclick="planToggleDay('+d+')" aria-pressed="'+(planDays(p).includes(d)?"true":"false")+'" aria-label="'+WD_SHORT[d]+' als Trainingstag '+(planDays(p).includes(d)?"entfernen":"festlegen")+'">'+WD_SHORT[d]+'</button>').join("")
+    + '</div>'
     + '<label style="margin-top:14px">Übungen</label>';
   if(!p.items.length) h += '<p class="empty">Noch keine Übungen im Plan.</p>';
   p.items.forEach((it,i)=>{
@@ -2531,6 +2580,12 @@ function renderPlanEditor(){
   h += '<button class="btn grow" onclick="savePlan()">Plan speichern</button></div>';
   openModal(h);
 }
+function planToggleDay(d){
+  if(!Array.isArray(planDraft.days)) planDraft.days = [];
+  const i = planDraft.days.indexOf(d);
+  if(i>=0) planDraft.days.splice(i,1); else planDraft.days.push(d);
+  renderPlanEditor();
+}
 function planMoveItem(i, dir){
   const arr = planDraft.items, j = i + dir;
   if(j < 0 || j >= arr.length) return;
@@ -2542,6 +2597,7 @@ function savePlan(){
   p.name = (document.getElementById("plan-name").value||"").trim();
   if(!p.name){ toast("Bitte Namen angeben"); return; }
   if(!p.items.length){ toast("Mindestens eine Übung hinzufügen"); return; }
+  if(Array.isArray(p.days)) p.days = WD_ORDER.filter(x=>p.days.includes(x));   // dedupliziert + Mo-zuerst sortiert
   const idx = state.plans.findIndex(x=>x.id===p.id);
   if(idx>=0) state.plans[idx] = p; else state.plans.push(p);
   save(); closeModal(); renderTrainingBody(); toast("Plan gespeichert ✓");
@@ -3857,13 +3913,24 @@ function saveProfile(){
   renderProfile();
 }
 
-/* ---------- Design (hell/dunkel) ---------- */
+/* ---------- Design (dunkel / hell / automatisch) ---------- */
+function resolveTheme(t){
+  // "auto" folgt der Systemeinstellung; gespeicherte Werte "dark"/"light" bleiben unverändert gültig
+  if(t!=="auto") return t;
+  return (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+}
 function applyTheme(t){
-  document.documentElement.setAttribute("data-theme", t);
+  const eff = resolveTheme(t);
+  document.documentElement.setAttribute("data-theme", eff);
   const b = document.getElementById("theme-btn");
-  if(b) b.textContent = t==="light" ? "🌙" : "☀️";
+  if(b){
+    b.textContent = t==="auto" ? "🌓" : (eff==="light" ? "🌙" : "☀️");
+    const lbl = t==="auto" ? "automatisch (folgt dem System)" : (eff==="light" ? "hell" : "dunkel");
+    b.title = "Design: "+lbl+" – tippen zum Wechseln";
+    b.setAttribute("aria-label", "Design wechseln (dunkel → hell → automatisch), aktuell: "+lbl);
+  }
   const mt = document.getElementById("meta-theme");
-  if(mt) mt.setAttribute("content", t==="light" ? "#eef1f7" : "#0b0e16");
+  if(mt) mt.setAttribute("content", eff==="light" ? "#eef1f7" : "#0b0e16");
   localStorage.setItem("fittrack_theme", t);
 }
 function toggleTheme(){
@@ -3873,7 +3940,18 @@ function toggleTheme(){
     b.style.transform = "rotate(360deg)";
     setTimeout(()=>{ b.style.transition=""; b.style.transform=""; }, 520);
   }
-  applyTheme(document.documentElement.getAttribute("data-theme")==="light" ? "dark" : "light");
+  const cur = localStorage.getItem("fittrack_theme")||"dark";
+  const next = cur==="dark" ? "light" : (cur==="light" ? "auto" : "dark");
+  applyTheme(next);
+  toast(next==="auto" ? "Design folgt jetzt dem System 🌓" : (next==="light" ? "Helles Design ☀️" : "Dunkles Design 🌙"));
+}
+// Bei "auto": auf Systemwechsel (hell/dunkel) live reagieren
+if(window.matchMedia){
+  try{
+    matchMedia("(prefers-color-scheme: light)").addEventListener("change", ()=>{
+      if((localStorage.getItem("fittrack_theme")||"dark")==="auto") applyTheme("auto");
+    });
+  }catch(e){ /* ältere Browser: Auto-Modus wird beim nächsten Laden angewendet */ }
 }
 
 /* ---------- Undo-Toast (Löschen rückgängig machen) ---------- */
