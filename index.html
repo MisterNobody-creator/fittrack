@@ -1157,7 +1157,7 @@ const KCAL_PER_STEP = 0.04;
 const STORE_KEY = "fittrack_data_v1";
 let state = {
   profile:{gender:"m", age:30, height:180, weight:80, activity:1.4, kcalTarget:2200,
-           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90, targetWeight:null},
+           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90, targetWeight:null, weeklyGoal:0},
   customFoods:[], diary:{}, plans:[], sessions:[], weights:[], customExercises:[], active:null,
   badgesSeen:[],  // additiv: IDs bereits gemeldeter Erfolgs-Badges
   recipes:[],     // additiv: eigene Rezepte (gespeicherte Mahlzeiten)
@@ -1168,8 +1168,9 @@ function load(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
     if(raw){ const d = JSON.parse(raw); state = Object.assign(state, d);
-      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90,targetWeight:null}, state.profile);
+      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90,targetWeight:null,weeklyGoal:0}, state.profile);
       if(typeof state.profile.restSec !== "number") state.profile.restSec = 90;
+      if(typeof state.profile.weeklyGoal !== "number") state.profile.weeklyGoal = 0;
       if(!Array.isArray(state.recipes)) state.recipes = [];
       if(!Array.isArray(state.measures)) state.measures = []; }
   }catch(e){ console.warn("Laden fehlgeschlagen", e); }
@@ -1407,9 +1408,14 @@ function renderDashboard(){
   // Streak & Workouts diese Woche
   const streak = loggingStreak();
   const wkWorkouts = state.sessions.filter(s=>s.date>=mondayOf(ds) && s.date<=ds).length;
+  const wkGoal = state.profile.weeklyGoal||0;
+  const goalPct = wkGoal>0 ? Math.min(100, Math.round(wkWorkouts/wkGoal*100)) : 0;
   html += '<div class="statgrid">'
     + '<div class="stat"><b>'+streak+'</b><span><span class="streakflame">🔥</span> '+(streak===1?'Tag':'Tage')+'-Streak'+(streak>0?' · dranbleiben!':' · heute starten!')+'</span></div>'
-    + '<div class="stat"><b>'+wkWorkouts+'</b><span>🏋️ Workouts diese Woche</span></div>'
+    + (wkGoal>0
+      ? '<div class="stat"><b>'+wkWorkouts+'<span style="font-size:15px; font-weight:600; color:var(--muted)">/'+wkGoal+'</span></b><span>'+(wkWorkouts>=wkGoal?'🎉 Wochenziel erreicht!':'🎯 Workouts · Wochenziel')+'</span>'
+        + '<div role="progressbar" aria-valuemin="0" aria-valuemax="'+wkGoal+'" aria-valuenow="'+Math.min(wkWorkouts,wkGoal)+'" aria-label="Wochenziel: '+wkWorkouts+' von '+wkGoal+' Workouts" style="margin-top:7px; height:4px; border-radius:2px; background:var(--card2); overflow:hidden"><i style="display:block; height:100%; width:'+goalPct+'%; border-radius:2px; background:'+(wkWorkouts>=wkGoal?'var(--green)':'linear-gradient(90deg,#6366f1,#c084fc)')+'; transition:width .6s cubic-bezier(.2,.9,.3,1)"></i></div></div>'
+      : '<div class="stat"><b>'+wkWorkouts+'</b><span>🏋️ Workouts diese Woche</span></div>')
     + '</div>';
 
   // Schnellaktionen: die häufigsten Aktionen mit einem Tap
@@ -3178,6 +3184,15 @@ function showWorkoutSummary(sess, prs){
   }
   if(sess.note) h += '<p class="muted" style="font-style:italic; font-size:13px; margin-top:10px">📝 '+esc(sess.note)+'</p>';
   if(streak >= 2) h += '<p class="muted" style="text-align:center; margin-top:12px">🔥 '+streak+' Tage Streak – weiter so!</p>';
+  const wg = state.profile.weeklyGoal||0;
+  if(wg > 0){
+    const mon = mondayOf(sess.date);
+    const wk = state.sessions.filter(x=>x.date>=mon && x.date<=addDays(mon,6)).length;
+    h += '<p class="muted" style="text-align:center; margin-top:'+(streak>=2?'4':'12')+'px">'
+      + (wk>=wg ? '🎯 Wochenziel erreicht: <b>'+wk+'/'+wg+'</b> Workouts – stark! 🎉'
+                : '🎯 Wochenziel: <b>'+wk+'/'+wg+'</b> Workouts – noch '+(wg-wk)+' bis zum Ziel')
+      + '</p>';
+  }
   h += '<button class="btn ghost full" style="margin-top:14px" onclick="saveSessionAsPlan(\''+sess.id+'\')" title="Übungen und Sätze dieses Workouts als Trainingsplan speichern">📋 Als Plan speichern</button>';
   h += '<div class="row" style="margin-top:10px">'
     + '<button class="btn ghost grow" onclick="closeModal()">Fertig</button>'
@@ -3485,6 +3500,7 @@ function renderProgress(){
     + '<button class="btn ghost grow" onclick="document.getElementById(\'import-file\').click()">Import</button></div>'
     + '<button class="btn ghost full" style="margin-top:9px" onclick="exportDiaryCSV()">📄 Ernährungstagebuch als CSV</button>'
     + '<button class="btn ghost full" style="margin-top:9px" onclick="exportBodyCSV()">📊 Körperdaten als CSV (Gewicht + Maße)</button>'
+    + '<button class="btn ghost full" style="margin-top:9px" onclick="exportTrainingCSV()">🏋️ Trainings-Historie als CSV (alle Sätze)</button>'
     + '<p class="muted" style="font-size:11.5px; margin-top:7px">CSV lässt sich in Excel oder Google Sheets öffnen.</p>'
     + '<input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)"></div>';
 
@@ -3805,6 +3821,27 @@ function exportDiaryCSV(){
   URL.revokeObjectURL(a.href);
   toast("CSV heruntergeladen ✓ ("+(rows.length-1)+" Einträge)");
 }
+function exportTrainingCSV(){
+  const csvCell = v => { const s = String(v==null?"":v).replace(/"/g,'""'); return /[";\n]/.test(s) ? '"'+s+'"' : s; };
+  const rows = [["Datum","Workout","Dauer (min)","Uebung","Satz","Gewicht (kg)","Wdh.","Volumen (kg)"]];
+  const sess = state.sessions.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  for(const s of sess){
+    for(const e of (s.entries||[])){
+      (e.sets||[]).forEach((st,i)=>{
+        rows.push([s.date, s.name, s.durationMin||"", e.name, i+1, r1(st.kg||0), st.reps||0, r1((st.kg||0)*(st.reps||0))]);
+      });
+    }
+  }
+  if(rows.length===1){ toast("Noch keine Workouts zum Exportieren"); return; }
+  const csv = "﻿" + rows.map(r=>r.map(csvCell).join(";")).join("\r\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "fittrack-training-"+todayStr()+".csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("CSV heruntergeladen ✓ ("+sess.length+" Workouts, "+(rows.length-1)+" Sätze)");
+}
 function importData(input){
   const file = input.files[0];
   if(!file) return;
@@ -3856,6 +3893,11 @@ function renderProfile(){
     + '<div class="grow"><label>Fett %</label><input type="number" id="pf-mf" value="'+p.macro.f+'"></div></div>'
     + '<p class="muted" id="macro-sum" style="margin-top:6px"></p>'
     + '<label>Wasserziel (Gläser à 250 ml)</label><input type="number" id="pf-water" value="'+p.waterTarget+'" min="1" max="20">'
+    + '<label>🎯 Trainings-Wochenziel (Workouts pro Woche)</label><select id="pf-weekly">'
+    + '<option value="0"'+(!(p.weeklyGoal>0)?" selected":"")+'>Aus – kein Wochenziel</option>'
+    + [1,2,3,4,5,6,7].map(n=>'<option value="'+n+'"'+(p.weeklyGoal===n?" selected":"")+'>'+n+'× pro Woche</option>').join("")
+    + '</select>'
+    + '<p class="muted" style="font-size:11.5px; margin-top:6px">Mit Wochenziel zeigt das Dashboard deinen Fortschritt (z. B. 2/3) mit Balken – und feiert, wenn du es schaffst.</p>'
     + '</div>'
     + '<button class="btn full" onclick="saveProfile()">Profil speichern</button>';
 
@@ -3908,6 +3950,7 @@ function saveProfile(){
   if(mp+mc+mf!==100){ toast("Makros müssen zusammen 100 % ergeben"); return; }
   p.macro = {p:mp, c:mc, f:mf};
   p.waterTarget = Math.max(1, r0(num(document.getElementById("pf-water").value)));
+  p.weeklyGoal = Math.max(0, Math.min(7, r0(num(document.getElementById("pf-weekly").value))));
   p.setupDone = true;
   save(); toast("Profil gespeichert ✓");
   renderProfile();
