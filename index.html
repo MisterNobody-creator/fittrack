@@ -191,6 +191,20 @@
   .mbrow .mbtrack{flex:1; height:10px; background:var(--card2); border:1px solid var(--border); border-radius:6px; overflow:hidden}
   .mbrow .mbfill{height:100%; border-radius:6px; background:var(--grad); transition:width .6s ease}
   .mbrow .mbv{width:74px; flex-shrink:0; text-align:right; font-size:11.5px; color:var(--muted)}
+  /* Bestleistungen (persoenliche Rekorde je Uebung) */
+  .prrow{display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:9px 4px; border-top:1px solid var(--border); background:none; cursor:pointer; transition:.18s}
+  .prrow:first-of-type{border-top:none}
+  .prrow:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:10px}
+  @media (hover:hover){ .prrow:hover{background:var(--card2); border-radius:10px} }
+  .prrow .prrank{width:26px; height:26px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:9px; background:var(--card2); border:1px solid var(--border); font-size:12px; font-weight:700; color:var(--muted)}
+  .prrow.top .prrank{background:var(--grad); border-color:transparent; color:#fff}
+  .prrow .prmain{flex:1; min-width:0}
+  .prrow .prmain b{display:block; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .prrow .prmain span{display:block; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .prrow .prval{flex-shrink:0; text-align:right}
+  .prrow .prval b{display:block; font-size:14px; font-variant-numeric:tabular-nums}
+  .prrow .prval span{display:block; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums}
+  .prnew{flex-shrink:0; font-size:9.5px; font-weight:800; letter-spacing:.6px; padding:3px 7px; border-radius:20px; background:var(--grad); color:#fff; box-shadow:var(--glow)}
   /* Scheiben-Rechner (Langhantel) */
   .platewrap{display:flex; align-items:center; justify-content:center; gap:3px; min-height:96px; margin-top:12px}
   .platewrap .pbar{width:44px; height:10px; border-radius:5px; background:var(--muted); opacity:.55; flex-shrink:0}
@@ -3403,9 +3417,93 @@ function muscleCardHtml(){
   return h + '</div>';
 }
 
+/* ---------- Bestleistungen: persönliche Rekorde je Übung (rein abgeleitet aus state.sessions) ---------- */
+let prSort = "e1rm";   // "e1rm" | "kg" | "date" (nicht persistiert)
+function prRecords(){
+  const names = {};
+  for(const s of state.sessions) for(const e of (s.entries||[])) if((e.sets||[]).length) names[e.exId] = e.name;
+  const out = [];
+  for(const id in names){
+    const hist = exHistory(id);
+    if(!hist.length) continue;
+    let bk = hist[0], b1 = hist[0], vol = 0, last = "";
+    for(const h of hist){
+      vol += h.vol;
+      if(h.date > last) last = h.date;
+      if(h.bestKg > bk.bestKg || (h.bestKg === bk.bestKg && h.bestReps > bk.bestReps)) bk = h;
+      if(h.e1rm > b1.e1rm) b1 = h;
+    }
+    const ex = getExercise(id);
+    out.push({id:id, name:(ex && ex.name) || names[id], muscle:(ex && ex.muscle) || "Sonstiges",
+      kg:bk.bestKg, reps:bk.bestReps, kgDate:bk.date, e1rm:b1.e1rm, e1rmDate:b1.date,
+      units:hist.length, vol:vol, last:last});
+  }
+  return out;
+}
+function prRecDate(r){ return r.kgDate > r.e1rmDate ? r.kgDate : r.e1rmDate; }
+function prSorted(){
+  const arr = prRecords();
+  if(prSort==="kg")        arr.sort((a,b)=> b.kg-a.kg || b.reps-a.reps || a.name.localeCompare(b.name,"de"));
+  else if(prSort==="date") arr.sort((a,b)=> b.last.localeCompare(a.last) || a.name.localeCompare(b.name,"de"));
+  else                     arr.sort((a,b)=> b.e1rm-a.e1rm || b.kg-a.kg || a.name.localeCompare(b.name,"de"));
+  return arr;
+}
+function setPrSort(s){ prSort = s; renderProgressBody(); }
+function prRowHtml(r, i){
+  const recDate = prRecDate(r);
+  const fresh = recDate >= addDays(todayStr(), -30);
+  const lbl = r.name+": bester Satz "+r1(r.kg)+" Kilogramm mal "+r.reps+" Wiederholungen"
+    + (r.e1rm>0 ? ", geschätztes Einer-Maximum "+r0(r.e1rm)+" Kilogramm" : "")+". Details öffnen.";
+  return '<button class="prrow'+(i<3?" top":"")+'" onclick="openExerciseDetail(\''+r.id+'\')" aria-label="'+esc(lbl)+'">'
+    + '<span class="prrank" aria-hidden="true">'+(i+1)+'</span>'
+    + '<span class="prmain"><b>'+esc(r.name)+'</b><span>'+esc(r.muscle)+' · '+r.units+(r.units===1?' Einheit':' Einheiten')+' · '+fmtDate(recDate)+'</span></span>'
+    + '<span class="prval"><b>'+r1(r.kg)+' kg × '+r.reps+'</b><span>'+(r.e1rm>0?'≈ '+r0(r.e1rm)+' kg 1RM':'–')+'</span></span>'
+    + (fresh ? '<span class="prnew">NEU</span>' : '')
+    + '</button>';
+}
+function prBoardHtml(){
+  const all = prSorted();
+  let h = '<div class="card"><div class="cardhead"><span class="cicon">🏆</span><h3>Bestleistungen</h3>'
+    + '<span class="muted">'+all.length+(all.length===1?' Übung':' Übungen')+'</span></div>';
+  if(!all.length){
+    return h + emptyState('🏆','Noch keine Bestleistungen','Schließe ein Workout mit abgehakten Sätzen ab – deine Rekorde je Übung sammeln sich hier automatisch.') + '</div>';
+  }
+  h += '<div class="chips">'
+    + '<button class="chip'+(prSort==="e1rm"?" on":"")+'" onclick="setPrSort(\'e1rm\')">Stärkste (1RM)</button>'
+    + '<button class="chip'+(prSort==="kg"?" on":"")+'" onclick="setPrSort(\'kg\')">Schwerste kg</button>'
+    + '<button class="chip'+(prSort==="date"?" on":"")+'" onclick="setPrSort(\'date\')">Zuletzt trainiert</button>'
+    + '</div>';
+  const top = all.slice(0,6), rest = all.slice(6);
+  h += top.map(function(r,i){ return prRowHtml(r,i); }).join("");
+  if(rest.length){
+    h += '<details style="margin-top:8px"><summary class="muted" style="cursor:pointer; font-size:13px">Alle '+all.length+' Übungen anzeigen</summary>'
+      + rest.map(function(r,i){ return prRowHtml(r, i+6); }).join("") + '</details>';
+  }
+  const cutoff = addDays(todayStr(), -30);
+  const fresh = all.filter(r=>prRecDate(r) >= cutoff).length;
+  h += '<p class="muted" style="font-size:12px; margin-top:11px">'
+    + (fresh ? '🔥 '+fresh+' '+(fresh===1?'Rekord':'Rekorde')+' aus den letzten 30 Tagen – tippe eine Übung für den Kraft-Verlauf.'
+             : '💡 Tippe auf eine Übung für Kraft-Verlauf und Details.')
+    + '</p>';
+  return h + '</div>';
+}
+
+/* ---------- Fortschritt-Tab mit Unter-Reitern ---------- */
+let progressSub = "overview";   // "overview" | "body" | "training" | "data" (nicht persistiert)
+function progressTab(s){ progressSub = s; renderProgress(); }
 function renderProgress(){
+  const tabs = [["overview","Überblick"],["body","Körper"],["training","Training"],["data","Daten"]];
+  document.getElementById("view-progress").innerHTML = '<div class="subtabs">'
+    + tabs.map(t=>'<button class="'+(progressSub===t[0]?"on":"")+'" onclick="progressTab(\''+t[0]+'\')">'+t[1]+'</button>').join("")
+    + '</div><div id="progress-body"></div>';
+  renderProgressBody();
+}
+function renderProgressBody(){
+  const el = document.getElementById("progress-body");
+  if(!el) return;
   let html = "";
 
+  if(progressSub==="overview"){
   // Wochenrückblick (aktuelle Woche vs. Vorwoche)
   const thisMon = mondayOf(todayStr());
   const cur = weekStats(thisMon), prev = weekStats(addDays(thisMon,-7));
@@ -3437,7 +3535,9 @@ function renderProgress(){
   html += '</div>'
     + (got<badges.length ? '<p class="muted" style="margin-top:10px; font-size:12px">Bleib dran – gesperrte Erfolge zeigen deinen Fortschritt.</p>' : '<p class="muted" style="margin-top:10px; font-size:12px">Alle Erfolge freigeschaltet – stark! 🎉</p>')
     + '</div>';
+  }
 
+  else if(progressSub==="body"){
   // Gewicht
   const ws = state.weights.slice().sort((a,b)=>a.date.localeCompare(b.date));
   html += '<div class="card"><div class="row between"><h3>⚖️ Körpergewicht</h3>'
@@ -3474,6 +3574,11 @@ function renderProgress(){
   }
   html += '<div class="card"><h3>🍽 Kalorien – letzte 7 Tage</h3>'
     + barChart(days, state.profile.kcalTarget) + '</div>';
+  }
+
+  else if(progressSub==="training"){
+  // Bestleistungen (persönliche Rekorde je Übung)
+  html += prBoardHtml();
 
   // Trainingsvolumen pro Woche
   const weeks = [];
@@ -3492,7 +3597,9 @@ function renderProgress(){
 
   // Muskel-Balance (Sätze pro Muskelgruppe, letzte 4 Wochen)
   html += muscleCardHtml();
+  }
 
+  else {
   // Daten
   html += '<div class="card"><h3>💾 Daten</h3><p class="muted">Alle Daten liegen nur lokal in diesem Browser.</p>'
     + '<div class="row" style="margin-top:10px">'
@@ -3503,8 +3610,9 @@ function renderProgress(){
     + '<button class="btn ghost full" style="margin-top:9px" onclick="exportTrainingCSV()">🏋️ Trainings-Historie als CSV (alle Sätze)</button>'
     + '<p class="muted" style="font-size:11.5px; margin-top:7px">CSV lässt sich in Excel oder Google Sheets öffnen.</p>'
     + '<input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)"></div>';
+  }
 
-  document.getElementById("view-progress").innerHTML = html;
+  el.innerHTML = html;
 }
 function openWeightModal(){
   openModal('<h3>⚖️ Gewicht eintragen</h3>'
