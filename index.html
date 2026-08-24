@@ -166,8 +166,28 @@
   .setrow .chk{width:38px; height:38px; border-radius:11px; background:var(--card2); border:1px solid var(--border2); color:var(--muted); font-size:15px; transition:.18s}
   .setrow.done .chk{background:linear-gradient(135deg,#10b981,#34d399); border-color:transparent; color:#052e1c; box-shadow:0 4px 14px -4px rgba(16,185,129,.6)}
   .setrow.done input{border-color:rgba(52,211,153,.5)}
+  /* Satz-Vergleich mit dem letzten Mal (zusaetzliche Spalte "Zuletzt") */
+  .setrow.wp{grid-template-columns:20px 56px 1fr 1fr 34px 24px; gap:6px}
+  .setrow .pset{font-size:11.5px; color:var(--muted); background:var(--card2); border:1px solid var(--border); border-radius:9px; padding:8px 2px; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:.16s; line-height:1.15}
+  .setrow .pset:disabled{opacity:.4; background:none; border-color:transparent; cursor:default}
+  .setrow .pset:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (hover:hover){ .setrow .pset:not(:disabled):hover{color:var(--text); border-color:var(--border2); transform:translateY(-1px)} }
+  .tipbtn{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--text); background:linear-gradient(135deg, rgba(99,102,241,.16), rgba(168,85,247,.16)); border:1px solid var(--border2); border-radius:999px; padding:6px 12px; margin-bottom:7px; transition:.16s; text-align:left}
+  .tipbtn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (hover:hover){ .tipbtn:hover{filter:brightness(1.15); transform:translateY(-1px)} }
   .aw-ex{margin-bottom:16px}
   .aw-ex .hint{font-size:12px; color:var(--muted); margin-bottom:6px}
+  /* Willkommens-Assistent */
+  .obdots{display:flex; gap:6px; justify-content:center; margin:2px 0 14px}
+  .obdots i{width:26px; height:4px; border-radius:2px; background:var(--border2); transition:.25s}
+  .obdots i.on{background:var(--grad); width:34px}
+  .obcard{display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--card2); border:1px solid var(--border); border-radius:16px; padding:13px 14px; margin-bottom:9px; color:var(--text); font-size:14px; font-weight:600; transition:.18s}
+  .obcard .obi{font-size:22px; line-height:1}
+  .obcard small{display:block; font-weight:400; font-size:11.5px; color:var(--muted); margin-top:2px}
+  .obcard.on{border-color:transparent; background:var(--grad); color:#fff; box-shadow:var(--glow)}
+  .obcard.on small{color:rgba(255,255,255,.85)}
+  .obcard:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (hover:hover){ .obcard:not(.on):hover{border-color:var(--border2); transform:translateY(-1px)} }
   /* Aktives Workout Leiste */
   #aw-bar{position:fixed; bottom:86px; left:50%; transform:translateX(-50%); width:min(612px, calc(100% - 24px)); background:var(--grad); color:#fff; padding:12px 18px; border-radius:16px; display:none; justify-content:space-between; align-items:center; z-index:49; cursor:pointer; box-shadow:var(--glow); font-size:14px}
   #aw-bar.show{display:flex}
@@ -1178,9 +1198,11 @@ let state = {
   measures:[]     // additiv: Körpermaße-Messungen ({date, waist/chest/hips/arm/thigh} in cm)
 };
 
+let isFirstVisit = false;   // true = noch nie etwas gespeichert -> Willkommens-Assistent
 function load(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
+    isFirstVisit = !raw;
     if(raw){ const d = JSON.parse(raw); state = Object.assign(state, d);
       state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90,targetWeight:null,weeklyGoal:0}, state.profile);
       if(typeof state.profile.restSec !== "number") state.profile.restSec = 90;
@@ -1416,7 +1438,9 @@ function renderDashboard(){
     + '</div></div>';
 
   if(!state.profile.setupDone){
-    html += '<div class="banner">👋 <b>Willkommen bei FitTrack!</b><br>Lege zuerst im Profil deine Daten und dein Kalorienziel fest – der Rechner hilft dir dabei.<br><button class="btn small" style="margin-top:10px" onclick="switchTab(\'profile\')">Zum Profil</button></div>';
+    html += '<div class="banner">👋 <b>Willkommen bei FitTrack!</b><br>In einer Minute eingerichtet: Ziel wählen, Körperdaten eingeben – dein Kalorienziel und die Makros berechnen wir für dich.'
+      + '<br><button class="btn small" style="margin-top:10px" onclick="openOnboarding()">🚀 Jetzt einrichten</button>'
+      + '<button class="btn ghost small" style="margin:10px 0 0 8px" onclick="switchTab(\'profile\')">Lieber selbst im Profil</button></div>';
   }
 
   // Streak & Workouts diese Woche
@@ -3058,6 +3082,57 @@ function itBeep(kind){
     setTimeout(()=>{ try{ctx.close();}catch(e){} }, 900);
   }catch(e){}
 }
+/* ---------- Satz-Vergleich mit dem letzten Mal & Progressions-Vorschlag ---------- */
+function lastSetsFor(exId){
+  const sess = state.sessions.slice().sort((a,b)=>b.date.localeCompare(a.date) || (b.start||0)-(a.start||0));
+  for(const s of sess){
+    const e = s.entries.find(x=>x.exId===exId);
+    if(e && e.sets && e.sets.length) return {date:s.date, sets:e.sets};
+  }
+  return null;
+}
+function kgStep(kg){ return kg>=60 ? 5 : kg>=20 ? 2.5 : 1.25; }
+function progressionTip(exId){
+  const hist = exHistory(exId);
+  if(!hist.length) return null;
+  const last = hist[hist.length-1];
+  const kg = last.bestKg||0, reps = last.bestReps||0;
+  if(reps<=0) return null;
+  const l3 = hist.slice(-3);
+  const plateau = l3.length===3 && l3.every(h=>h.bestKg===kg && h.bestReps===reps);   // 3× derselbe Bestsatz
+  if(kg<=0) return {kg:0, reps:reps+1, plateau:plateau,
+    text:"Vorschlag: "+(reps+1)+" Wdh." + (plateau?" – 3× dasselbe, leg eine drauf":" (letztes Mal "+reps+")")};
+  if(reps>=12 || plateau){
+    const nk = Math.round((kg + kgStep(kg))*100)/100;
+    const nr = reps>=12 ? 8 : Math.max(1, reps-1);
+    return {kg:nk, reps:nr, plateau:plateau,
+      text:"Vorschlag: "+fmtKg(nk)+" kg × "+nr + (plateau?" – 3× derselbe Satz, Zeit für mehr":" – "+reps+" Wdh. geschafft, mehr Gewicht")};
+  }
+  return {kg:kg, reps:reps+1, plateau:false,
+    text:"Vorschlag: "+fmtKg(kg)+" kg × "+(reps+1)+" – eine Wdh. mehr als letztes Mal"};
+}
+function awUsePrev(ei, si){
+  const e = state.active && state.active.entries[ei];
+  if(!e) return;
+  const prev = lastSetsFor(e.exId), st = e.sets[si];
+  const p = prev && prev.sets[si];
+  if(!p || !st) return;
+  st.kg = p.kg||0; st.reps = p.reps||0;
+  save(); renderActiveWorkout();
+  toast("Werte vom letzten Mal übernommen");
+}
+function awApplyTip(ei){
+  const e = state.active && state.active.entries[ei];
+  if(!e) return;
+  const tip = progressionTip(e.exId);
+  if(!tip) return;
+  let i = e.sets.findIndex(s=>!s.done);
+  if(i < 0){ e.sets.push({kg:0, reps:0, done:false}); i = e.sets.length-1; }
+  e.sets[i].kg = tip.kg; e.sets[i].reps = tip.reps;
+  save(); renderActiveWorkout();
+  toast("🎯 Satz "+(i+1)+": "+(tip.kg>0 ? fmtKg(tip.kg)+" kg × "+tip.reps : tip.reps+" Wdh.")+" übernommen");
+}
+
 function renderActiveWorkout(){
   const aw = state.active;
   if(!aw) return;
@@ -3077,15 +3152,25 @@ function renderActiveWorkout(){
 
   aw.entries.forEach((e,ei)=>{
     const last = lastPerf(e.exId);
+    const prev = lastSetsFor(e.exId);
+    const tip  = progressionTip(e.exId);
+    const wp   = prev ? " wp" : "";
     h += '<div class="card aw-ex"><div class="row between"><h3 style="margin:0; cursor:pointer" onclick="openExerciseDetail(\''+e.exId+'\')">'+esc(e.name)+' <span class="muted" style="font-size:12px">ℹ️</span></h3>'
       + '<div class="row" style="gap:0">'
       + '<button class="del" style="color:var(--muted); background:none'+(ei===0?'; opacity:.25; pointer-events:none':'')+'" aria-label="Übung nach oben verschieben" title="Nach oben" onclick="awMoveExercise('+ei+',-1)">▲</button>'
       + '<button class="del" style="color:var(--muted); background:none'+(ei===aw.entries.length-1?'; opacity:.25; pointer-events:none':'')+'" aria-label="Übung nach unten verschieben" title="Nach unten" onclick="awMoveExercise('+ei+',1)">▼</button>'
       + '<button class="del" style="color:var(--red); background:none" aria-label="Übung entfernen" onclick="awRemoveExercise('+ei+')">🗑</button></div></div>'
       + (last?'<div class="hint">Letztes Mal: '+last+'</div>':'')
-      + '<div class="setrow" style="margin-top:6px"><span class="num">#</span><span class="num">kg</span><span class="num">Wdh.</span><span></span></div>';
+      + (tip?'<button class="tipbtn" onclick="awApplyTip('+ei+')" title="Vorschlag in den nächsten offenen Satz übernehmen" aria-label="'+esc(tip.text)+' – in den nächsten offenen Satz übernehmen"><span>🎯</span><span>'+esc(tip.text)+'</span></button>':'')
+      + '<div class="setrow'+wp+'" style="margin-top:6px"><span class="num">#</span>'
+      + (prev?'<span class="num" style="font-size:10.5px; text-transform:uppercase; letter-spacing:.4px">Zuletzt</span>':'')
+      + '<span class="num">kg</span><span class="num">Wdh.</span><span></span></div>';
     e.sets.forEach((st,si)=>{
-      h += '<div class="setrow'+(st.done?" done":"")+'"><span class="num">'+(si+1)+'</span>'
+      const p = prev ? prev.sets[si] : null;
+      h += '<div class="setrow'+wp+(st.done?" done":"")+'"><span class="num">'+(si+1)+'</span>'
+        + (prev ? (p
+            ? '<button class="pset" onclick="awUsePrev('+ei+','+si+')" title="Werte vom letzten Mal übernehmen" aria-label="Letztes Mal '+fmtKg(p.kg||0)+' Kilogramm mal '+(p.reps||0)+' Wiederholungen – übernehmen">'+fmtKg(p.kg||0)+'×'+(p.reps||0)+'</button>'
+            : '<button class="pset" disabled aria-hidden="true" tabindex="-1">–</button>') : '')
         + '<input type="number" inputmode="decimal" value="'+(st.kg||"")+'" placeholder="0" onchange="awSet('+ei+','+si+',\'kg\',this.value)">'
         + '<input type="number" inputmode="numeric" value="'+(st.reps||"")+'" placeholder="0" onchange="awSet('+ei+','+si+',\'reps\',this.value)">'
         + '<button class="chk" title="Satz abhaken" onclick="awToggleDone('+ei+','+si+')">✓</button>'
@@ -4064,6 +4149,124 @@ function saveProfile(){
   renderProfile();
 }
 
+/* ---------- Willkommens-Assistent: Erst-Einrichtung in 3 Schritten ---------- */
+const OB_GOALS = [
+  ["halten",       "⚖️", "Gewicht halten",   "Ausgewogen essen, fit bleiben"],
+  ["abnehmen",     "📉", "Abnehmen",         "Leichtes Kaloriendefizit (−400 kcal)"],
+  ["muskelaufbau", "💪", "Muskeln aufbauen", "Leichter Überschuss (+300 kcal), viel Protein"],
+  ["ausdauer",     "🏃", "Ausdauer aufbauen","Mehr Kohlenhydrate als Treibstoff"]
+];
+const OB_ACT = [[1.2,"Sitzend","kaum Bewegung"],[1.375,"Leicht aktiv","1–3× Sport/Woche"],
+                [1.55,"Moderat aktiv","3–5× Sport/Woche"],[1.725,"Sehr aktiv","6–7× Sport/Woche"],
+                [1.9,"Extrem aktiv","körperliche Arbeit + Sport"]];
+let ob = null;
+function openOnboarding(){
+  const p = state.profile;
+  ob = {step:1, goal:p.goal||"halten", gender:p.gender||"m", age:p.age||30, height:p.height||180,
+        weight:p.weight||80, activity:p.activity||1.375, kcal:0, weekly:p.weeklyGoal||0};
+  renderOnboarding();
+}
+function obTdee(){
+  const bmr = 10*ob.weight + 6.25*ob.height - 5*ob.age + (ob.gender==="m"?5:-161);   // Mifflin-St Jeor
+  return {bmr:bmr, tdee:bmr*ob.activity};
+}
+function obSuggestKcal(){
+  const t = obTdee().tdee;
+  return Math.max(800, r0(ob.goal==="abnehmen" ? t-400 : ob.goal==="muskelaufbau" ? t+300 : t));
+}
+function obSet(k, v){
+  if(ob.step===2) obReadFields();
+  ob[k] = v;
+  renderOnboarding();
+}
+function obReadFields(){
+  const a = document.getElementById("ob-age"), h = document.getElementById("ob-height"), w = document.getElementById("ob-weight");
+  if(a) ob.age = r0(num(a.value));
+  if(h) ob.height = r0(num(h.value));
+  if(w) ob.weight = num(w.value);
+}
+function obNext(){
+  if(ob.step===2){
+    obReadFields();
+    if(ob.age<=0 || ob.height<=0 || ob.weight<=0){ toast("Bitte Alter, Größe und Gewicht ausfüllen"); return; }
+    ob.kcal = obSuggestKcal();
+  }
+  ob.step = Math.min(3, ob.step+1);
+  renderOnboarding();
+}
+function obBack(){
+  if(ob.step===2) obReadFields();
+  ob.step = Math.max(1, ob.step-1);
+  renderOnboarding();
+}
+function obFinish(){
+  const el = document.getElementById("ob-kcal");
+  const kc = el ? r0(num(el.value)) : 0;
+  const p = state.profile;
+  p.goal = ob.goal; p.gender = ob.gender;
+  p.age = ob.age; p.height = ob.height; p.weight = ob.weight; p.activity = ob.activity;
+  p.kcalTarget = Math.max(800, kc>0 ? kc : obSuggestKcal());
+  p.macro = goalMacroSplit(ob.goal);
+  p.weeklyGoal = Math.max(0, Math.min(7, r0(ob.weekly)));
+  p.setupDone = true;
+  if(!state.weights.length && ob.weight>0){
+    state.weights.push({date:todayStr(), kg:ob.weight});
+  }
+  save(); closeModal();
+  toast("Alles startklar – willkommen bei FitTrack! 🎉");
+  switchTab("dashboard");
+}
+function renderOnboarding(){
+  let h = '<div class="obdots" role="progressbar" aria-valuemin="1" aria-valuemax="3" aria-valuenow="'+ob.step+'" aria-label="Schritt '+ob.step+' von 3">'
+        + [1,2,3].map(n=>'<i class="'+(n<=ob.step?"on":"")+'"></i>').join("") + '</div>';
+
+  if(ob.step===1){
+    h += '<h3 style="margin-bottom:4px">👋 Willkommen bei FitTrack</h3>'
+      + '<p class="muted" style="font-size:13px; margin-bottom:14px">In einer Minute eingerichtet. Was ist dein Ziel?</p>'
+      + OB_GOALS.map(g=>'<button class="obcard'+(ob.goal===g[0]?" on":"")+'" aria-pressed="'+(ob.goal===g[0])+'" onclick="obSet(\'goal\',\''+g[0]+'\')">'
+          + '<span class="obi">'+g[1]+'</span><span>'+esc(g[2])+'<small>'+esc(g[3])+'</small></span></button>').join("")
+      + '<button class="btn full" style="margin-top:12px" onclick="obNext()">Weiter →</button>'
+      + '<button class="btn ghost full small" style="margin-top:8px" onclick="closeModal()">Überspringen – später im Profil</button>';
+  }
+
+  else if(ob.step===2){
+    h += '<h3 style="margin-bottom:4px">📏 Deine Körperdaten</h3>'
+      + '<p class="muted" style="font-size:13px; margin-bottom:12px">Daraus berechnet FitTrack deinen Kalorienbedarf. Alles bleibt lokal in deinem Browser.</p>'
+      + '<div class="chips">'
+      + [["m","Männlich"],["w","Weiblich"]].map(g=>'<button class="chip'+(ob.gender===g[0]?" on":"")+'" aria-pressed="'+(ob.gender===g[0])+'" onclick="obSet(\'gender\',\''+g[0]+'\')">'+g[1]+'</button>').join("")
+      + '</div>'
+      + '<div class="row"><div class="grow"><label>Alter</label><input type="number" id="ob-age" inputmode="numeric" value="'+ob.age+'"></div>'
+      + '<div class="grow"><label>Größe (cm)</label><input type="number" id="ob-height" inputmode="numeric" value="'+ob.height+'"></div>'
+      + '<div class="grow"><label>Gewicht (kg)</label><input type="number" id="ob-weight" step="0.1" inputmode="decimal" value="'+ob.weight+'"></div></div>'
+      + '<label style="margin-top:12px">Wie aktiv bist du im Alltag?</label>'
+      + OB_ACT.map(a=>'<button class="obcard'+(ob.activity==a[0]?" on":"")+'" aria-pressed="'+(ob.activity==a[0])+'" onclick="obSet(\'activity\','+a[0]+')" style="padding:10px 13px">'
+          + '<span>'+esc(a[1])+'<small>'+esc(a[2])+'</small></span></button>').join("")
+      + '<div class="row" style="margin-top:12px"><button class="btn ghost grow" onclick="obBack()">← Zurück</button>'
+      + '<button class="btn grow" onclick="obNext()">Weiter →</button></div>';
+  }
+
+  else {
+    const t = obTdee(), sug = obSuggestKcal(), m = goalMacroSplit(ob.goal);
+    const gl = OB_GOALS.find(g=>g[0]===ob.goal) || OB_GOALS[0];
+    h += '<h3 style="margin-bottom:4px">🎯 Dein Plan steht</h3>'
+      + '<p class="muted" style="font-size:13px; margin-bottom:12px">'+gl[1]+' '+esc(gl[2])+' – wir haben alles vorbereitet. Du kannst jeden Wert später im Profil ändern.</p>'
+      + '<div class="statgrid">'
+      + '<div class="stat"><b>'+r0(t.bmr)+'</b><span>Grundumsatz kcal</span></div>'
+      + '<div class="stat"><b>'+r0(t.tdee)+'</b><span>Gesamtumsatz kcal</span></div></div>'
+      + '<label style="margin-top:12px">Tägliches Kalorienziel (kcal)</label>'
+      + '<input type="number" id="ob-kcal" inputmode="numeric" value="'+sug+'">'
+      + '<p class="muted" style="font-size:11.5px; margin-top:6px">Empfohlen für dein Ziel. Makros: '+m.p+' % Protein · '+m.c+' % Kohlenhydrate · '+m.f+' % Fett.</p>'
+      + '<label style="margin-top:12px">🏋️ Wie oft willst du pro Woche trainieren?</label>'
+      + '<div class="chips">'
+      + '<button class="chip'+(!(ob.weekly>0)?" on":"")+'" aria-pressed="'+!(ob.weekly>0)+'" onclick="obSet(\'weekly\',0)">Kein Ziel</button>'
+      + [2,3,4,5,6].map(n=>'<button class="chip'+(ob.weekly===n?" on":"")+'" aria-pressed="'+(ob.weekly===n)+'" onclick="obSet(\'weekly\','+n+')">'+n+'×</button>').join("")
+      + '</div>'
+      + '<div class="row" style="margin-top:12px"><button class="btn ghost grow" onclick="obBack()">← Zurück</button>'
+      + '<button class="btn green grow" onclick="obFinish()">Los geht\'s! 🚀</button></div>';
+  }
+  openModal(h);
+}
+
 /* ---------- Design (dunkel / hell / automatisch) ---------- */
 function resolveTheme(t){
   // "auto" folgt der Systemeinstellung; gespeicherte Werte "dark"/"light" bleiben unverändert gültig
@@ -4508,6 +4711,8 @@ switchTab("dashboard");
 updateAwBar();
 if(state.active){ awTimer = setInterval(updateAwTime, 1000); }
 setupMotion();
+// Beim allerersten Besuch (noch nichts gespeichert) direkt den Willkommens-Assistenten zeigen
+if(isFirstVisit && !state.profile.setupDone){ setTimeout(function(){ if(!state.profile.setupDone) openOnboarding(); }, 700); }
 </script>
 </body>
 </html>
