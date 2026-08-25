@@ -1683,7 +1683,7 @@ function openSleepModal(ds){
   const quick = [6,6.5,7,7.5,8,8.5,9];
   openModal('<h3>💤 Schlaf – '+fmtDate(ds)+'</h3>'
     + '<p class="muted" style="font-size:12.5px; margin-bottom:2px">Wie lange hast du in der Nacht auf '+fmtDate(ds)+' geschlafen?</p>'
-    + '<label>Schlafdauer (Stunden)</label><input type="number" id="sleep-in" step="0.25" min="0" max="24" value="'+(h>0?String(r1(h)).replace(".",","):"")+'" placeholder="z. B. 7,5">'
+    + '<label>Schlafdauer (Stunden)</label><input type="text" inputmode="decimal" id="sleep-in" autocomplete="off" aria-label="Schlafdauer in Stunden" value="'+(h>0?String(r1(h)).replace(".",","):"")+'" placeholder="z. B. 7,5">'
     + '<div class="chips" style="margin-top:10px">'
     + quick.map(v=>'<button class="chip" onclick="sleepQuick('+v+')">'+String(v).replace(".",",")+' h</button>').join("")
     + '</div>'
