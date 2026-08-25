@@ -317,6 +317,23 @@
   .qbtn .qi{font-size:20px; line-height:1.2}
   .qbtn span{font-size:10.5px; color:var(--muted); font-weight:600}
   @media (hover:hover){ .qbtn:hover{transform:translateY(-2px); border-color:var(--accent)} }
+  /* Schlaf-Tracking */
+  .statgrid .stat.wide{grid-column:1 / -1}
+  .slrow{display:flex; gap:5px; margin:14px 0 2px}
+  .slcol{flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0; background:none; border:0; padding:0; cursor:pointer; font:inherit}
+  @media (hover:hover){ .slcol:hover .slbarw{outline:1px solid var(--accent)} .slcol:hover .sllab{color:var(--text)} }
+  .slbarw{width:100%; height:52px; display:flex; align-items:flex-end; background:var(--card2); border-radius:8px; overflow:hidden}
+  .slbar{display:block; width:100%; border-radius:8px; background:linear-gradient(180deg,#818cf8,#6366f1); animation:slGrow .6s cubic-bezier(.2,.9,.3,1)}
+  .slbar.ok{background:linear-gradient(180deg,#4ade80,#22c55e)}
+  @keyframes slGrow{from{height:0}}
+  .sllab{font-size:9.5px; color:var(--muted); font-weight:600; letter-spacing:.4px; text-transform:uppercase}
+  .slval{font-size:10.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+  .slcol.today .sllab{color:var(--accent)}
+  /* Wischen zwischen den Tabs: richtungsabhängiges Hereingleiten */
+  .swipe-next{animation:swipeInNext .34s cubic-bezier(.2,.9,.3,1)}
+  .swipe-prev{animation:swipeInPrev .34s cubic-bezier(.2,.9,.3,1)}
+  @keyframes swipeInNext{from{transform:translateX(26px); opacity:.35} to{transform:none; opacity:1}}
+  @keyframes swipeInPrev{from{transform:translateX(-26px); opacity:.35} to{transform:none; opacity:1}}
   /* Aktivitäts-Heatmap (GitHub-Stil) */
   .heatwrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
   .heatmonths{display:grid; grid-template-columns:repeat(16,1fr); gap:3px; font-size:9px; color:var(--muted); font-weight:600; margin-bottom:5px; min-width:330px}
@@ -1191,7 +1208,7 @@ const KCAL_PER_STEP = 0.04;
 const STORE_KEY = "fittrack_data_v1";
 let state = {
   profile:{gender:"m", age:30, height:180, weight:80, activity:1.4, kcalTarget:2200,
-           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90, targetWeight:null, weeklyGoal:0},
+           macro:{p:30,c:40,f:30}, waterTarget:8, goal:"halten", setupDone:false, restSec:90, targetWeight:null, weeklyGoal:0, sleepTarget:8},
   customFoods:[], diary:{}, plans:[], sessions:[], weights:[], customExercises:[], active:null,
   badgesSeen:[],  // additiv: IDs bereits gemeldeter Erfolgs-Badges
   recipes:[],     // additiv: eigene Rezepte (gespeicherte Mahlzeiten)
@@ -1204,9 +1221,10 @@ function load(){
     const raw = localStorage.getItem(STORE_KEY);
     isFirstVisit = !raw;
     if(raw){ const d = JSON.parse(raw); state = Object.assign(state, d);
-      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90,targetWeight:null,weeklyGoal:0}, state.profile);
+      state.profile = Object.assign({gender:"m",age:30,height:180,weight:80,activity:1.4,kcalTarget:2200,macro:{p:30,c:40,f:30},waterTarget:8,goal:"halten",setupDone:false,restSec:90,targetWeight:null,weeklyGoal:0,sleepTarget:8}, state.profile);
       if(typeof state.profile.restSec !== "number") state.profile.restSec = 90;
       if(typeof state.profile.weeklyGoal !== "number") state.profile.weeklyGoal = 0;
+      if(typeof state.profile.sleepTarget !== "number" || !(state.profile.sleepTarget>0)) state.profile.sleepTarget = 8;
       if(!Array.isArray(state.recipes)) state.recipes = [];
       if(!Array.isArray(state.measures)) state.measures = []; }
   }catch(e){ console.warn("Laden fehlgeschlagen", e); }
@@ -1272,12 +1290,41 @@ function macroTargets(){
   return {p: t*m.p/100/4, c: t*m.c/100/4, f: t*m.f/100/9};
 }
 
+/* ---------- Schlaf & Erholung (additiv: d.sleep = Stunden, d.sleepQ = 1–5) ---------- */
+const SLEEP_Q = [[1,"😫","Schlecht"],[2,"😕","Mäßig"],[3,"😐","Okay"],[4,"🙂","Gut"],[5,"😴","Top"]];
+function sleepTargetH(){ const t = state.profile.sleepTarget; return (typeof t==="number" && t>0) ? t : 8; }
+function sleepOf(ds){ const d = state.diary[ds]; const h = d && d.sleep; return (typeof h==="number" && h>0) ? h : 0; }   // liest bewusst ohne getDay() -> legt keine leeren Tage an
+function sleepQOf(ds){ const d = state.diary[ds]; const q = d && d.sleepQ; return (typeof q==="number" && q>=1 && q<=5) ? r0(q) : 0; }
+function fmtHours(h){
+  const hh = Math.floor(h+1e-9), mm = Math.round((h-hh)*60);
+  if(mm>=60) return (hh+1)+" h";
+  return mm ? hh+" h "+String(mm).padStart(2,"0")+" min" : hh+" h";
+}
+function sleepDays(n){
+  const out = [];
+  for(let i=n-1;i>=0;i--){ const ds = addDays(todayStr(), -i); out.push({date:ds, h:sleepOf(ds), q:sleepQOf(ds)}); }
+  return out;
+}
+function sleepStats(n){
+  const days = sleepDays(n), nights = days.filter(d=>d.h>0), tgt = sleepTargetH();
+  let sum = 0; for(const d of nights) sum += d.h;
+  return {days, nights:nights.length, avg: nights.length ? sum/nights.length : 0,
+          reached: nights.filter(d=>d.h>=tgt-0.001).length, target:tgt};
+}
+function sleepStreakDays(){        // Nächte in Folge (rückwärts ab gestern/heute) mit erreichtem Ziel
+  const tgt = sleepTargetH();
+  let ds = todayStr(), n = 0;
+  if(sleepOf(ds) < tgt-0.001) ds = addDays(ds,-1);   // heute Nacht evtl. noch nicht eingetragen
+  while(sleepOf(ds) >= tgt-0.001){ n++; ds = addDays(ds,-1); }
+  return n;
+}
+
 /* ---------- Streak & Wochenrückblick (rein abgeleitet, keine neuen Speicherdaten) ---------- */
 function hasEntriesOn(ds){
   const d = state.diary[ds];
   if(d){
     if(d.meals) for(const k of Object.keys(d.meals)) if(d.meals[k] && d.meals[k].length) return true;
-    if(d.water>0 || d.steps>0 || (d.activities && d.activities.length)) return true;
+    if(d.water>0 || d.steps>0 || (d.activities && d.activities.length) || sleepOf(ds)>0) return true;
   }
   return state.sessions.some(s=>s.date===ds);
 }
@@ -1289,7 +1336,7 @@ function loggingStreak(){
 }
 function weekStats(monday){
   const end = addDays(monday,6);
-  let kcal=0, days=0, water=0, workouts=0, vol=0, steps=0;
+  let kcal=0, days=0, water=0, workouts=0, vol=0, steps=0, sleep=0, nights=0;
   for(let i=0;i<7;i++){
     const ds = addDays(monday,i);
     if(ds>todayStr()) break;
@@ -1298,10 +1345,12 @@ function weekStats(monday){
       if(t.kcal>0){ kcal += t.kcal; days++; }
       water += state.diary[ds].water||0;
       steps += state.diary[ds].steps||0;
+      const sh = sleepOf(ds);
+      if(sh>0){ sleep += sh; nights++; }
     }
   }
   for(const s of state.sessions) if(s.date>=monday && s.date<=end){ workouts++; vol += sessionVolume(s); }
-  return {avgKcal: days ? kcal/days : 0, days, water, workouts, vol, steps};
+  return {avgKcal: days ? kcal/days : 0, days, water, workouts, vol, steps, nights, avgSleep: nights ? sleep/nights : 0};
 }
 function trendMark(cur, prev, goodDown){
   const diff = cur - prev;
@@ -1320,12 +1369,14 @@ function badgeList(){
   const streak = loggingStreak();
   const wo = state.sessions.length;
   let vol = 0; for(const s of state.sessions) vol += sessionVolume(s);
-  let meals = 0, waterDays = 0, steps10k = 0;
+  let meals = 0, waterDays = 0, steps10k = 0, sleepNights = 0;
+  const slTgt = sleepTargetH();
   for(const ds of Object.keys(state.diary)){
     const d = state.diary[ds];
     if(d.meals) for(const k of Object.keys(d.meals)) meals += (d.meals[k]||[]).length;
     if((d.water||0) >= state.profile.waterTarget) waterDays++;
     if((d.steps||0) >= 10000) steps10k = 1;
+    if(sleepOf(ds) >= slTgt-0.001) sleepNights++;
   }
   const weekCnt = {};
   for(const s of state.sessions){ const m = mondayOf(s.date); weekCnt[m] = (weekCnt[m]||0)+1; }
@@ -1343,7 +1394,8 @@ function badgeList(){
     B("water7","💧","Wasserfest","Wasserziel an 7 Tagen erreicht",waterDays,7),
     B("steps10k","👟","Stadtwanderer","10.000 Schritte an einem Tag",steps10k,1),
     B("meals50","🍎","Tagebuch-Profi","50 Mahlzeiten geloggt",meals,50),
-    B("weigh5","⚖️","Messbar besser","5 Gewichts-Einträge",state.weights.length,5)
+    B("weigh5","⚖️","Messbar besser","5 Gewichts-Einträge",state.weights.length,5),
+    B("sleep7","💤","Ausgeschlafen","Schlafziel an 7 Nächten erreicht",sleepNights,7)
   ];
 }
 function checkNewBadges(){
@@ -1360,10 +1412,11 @@ function checkNewBadges(){
 
 /* ---------- Navigation ---------- */
 let currentTab = "dashboard";
-function switchTab(tab){
+const TABS = ["dashboard","nutrition","training","progress","profile"];
+function switchTab(tab, dir){
   currentTab = tab;
   document.body.setAttribute("data-tab", tab); // v2-Design-Hook (nur CSS-Steuerung)
-  for(const v of ["dashboard","nutrition","training","progress","profile"]){
+  for(const v of TABS){
     document.getElementById("view-"+v).style.display = v===tab ? "" : "none";
     document.getElementById("nav-"+v).classList.toggle("on", v===tab);
     document.getElementById("nav-"+v).setAttribute("aria-current", v===tab ? "page" : "false");
@@ -1373,8 +1426,58 @@ function switchTab(tab){
   clearTimeout(el._fadeT);
   el.classList.remove("fade"); void el.offsetWidth; el.classList.add("fade");
   el._fadeT = setTimeout(()=>el.classList.remove("fade"), 900);   // Stagger nur beim Tab-Wechsel, nicht bei jedem Re-Render
+  if(dir){                                                        // Wisch-Richtung: neue Ansicht gleitet von der passenden Seite herein
+    clearTimeout(el._slideT);
+    el.classList.remove("swipe-next","swipe-prev"); void el.offsetWidth;
+    el.classList.add(dir>0 ? "swipe-next" : "swipe-prev");
+    el._slideT = setTimeout(()=>el.classList.remove("swipe-next","swipe-prev"), 420);
+  }
   window.scrollTo(0,0);
 }
+/* ---------- Wischen zwischen den Tabs (nur Touch, mit Rücksicht auf Dialoge & Querscroll) ---------- */
+function swipeTab(dir){
+  const i = TABS.indexOf(currentTab);
+  if(i<0) return false;
+  const j = i + dir;
+  if(j<0 || j>=TABS.length) return false;
+  switchTab(TABS[j], dir);
+  return true;
+}
+function swipeBlocked(target){
+  const bg = document.getElementById("modal-bg"), ov = document.getElementById("workout-overlay");
+  if(bg && bg.classList.contains("open")) return true;
+  if(ov && ov.classList.contains("open")) return true;
+  let el = target;
+  while(el && el.nodeType===1 && el !== document.body){
+    const tag = (el.tagName||"").toLowerCase();
+    if(tag==="input" || tag==="textarea" || tag==="select") return true;
+    if(el.scrollWidth - el.clientWidth > 6){                      // horizontal scrollbarer Bereich (Heatmap, Wochenstreifen …)
+      const ox = getComputedStyle(el).overflowX;
+      if(ox==="auto" || ox==="scroll") return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+(function setupSwipe(){
+  let sx = 0, sy = 0, active = false;
+  const main = document.querySelector("main");
+  if(!main || !("ontouchstart" in window)) return;
+  main.addEventListener("touchstart", function(e){
+    if(e.touches.length!==1 || swipeBlocked(e.target)){ active = false; return; }
+    active = true; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+  }, {passive:true});
+  main.addEventListener("touchend", function(e){
+    if(!active) return;
+    active = false;
+    const t = e.changedTouches && e.changedTouches[0];
+    if(!t) return;
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    if(Math.abs(dx) < 65 || Math.abs(dx) < Math.abs(dy)*1.6) return;   // nur klar horizontale Wischer
+    swipeTab(dx < 0 ? 1 : -1);
+  }, {passive:true});
+  main.addEventListener("touchcancel", function(){ active = false; }, {passive:true});
+})();
 function renderTab(tab){
   if(tab==="dashboard") renderDashboard();
   if(tab==="nutrition") renderNutrition();
@@ -1514,6 +1617,7 @@ function renderDashboard(){
   html += '<div class="statgrid">'
     + '<div class="stat" style="cursor:pointer" onclick="openStepsModal(\''+ds+'\')"><b>'+(d.steps||0).toLocaleString("de-DE")+'</b><span>👟 Schritte heute · tippen zum Ändern</span></div>'
     + '<div class="stat" style="cursor:pointer" onclick="openWeightModal()"><b>'+(lastW?r1(lastW.kg)+" kg":"–")+'</b><span>⚖️ Gewicht · tippen zum Eintragen</span></div>'
+    + sleepStatHtml(ds)
     + '</div>';
 
   document.getElementById("view-dashboard").innerHTML = html;
@@ -1554,6 +1658,116 @@ function openStepsModal(ds){
 function saveSteps(ds){
   getDay(ds).steps = Math.max(0, r0(num(document.getElementById("steps-in").value)));
   save(); closeModal(); renderTab(currentTab); toast("Schritte gespeichert");
+}
+
+/* ---------- Schlaf: Dashboard-Kachel & Eingabe ---------- */
+let sleepPick = {date:"", q:0};      // fluechtige Auswahl im Schlaf-Dialog (nicht gespeichert)
+function sleepStatHtml(ds){
+  const h = sleepOf(ds), q = sleepQOf(ds), tgt = sleepTargetH();
+  const qi = q ? (SLEEP_Q.find(x=>x[0]===q)||[0,"",""])[1] : "";
+  let sub;
+  if(h>0){
+    const diff = h - tgt;
+    sub = h>=tgt-0.001 ? '💤 Schlaf · Ziel erreicht 🎉' : '💤 Schlaf · '+fmtHours(Math.abs(diff))+' unter Ziel';
+    if(qi) sub += ' · '+qi;
+  } else {
+    sub = '💤 Schlaf letzte Nacht · tippen zum Eintragen';
+  }
+  return '<div class="stat wide" style="cursor:pointer" onclick="openSleepModal(\''+ds+'\')">'
+    + '<b>'+(h>0 ? esc(fmtHours(h)) : '–')+'</b><span>'+sub+'</span></div>';
+}
+function openSleepModal(ds){
+  ds = ds || todayStr();
+  const h = sleepOf(ds), q = sleepQOf(ds);
+  sleepPick = {date:ds, q:q};
+  const quick = [6,6.5,7,7.5,8,8.5,9];
+  openModal('<h3>💤 Schlaf – '+fmtDate(ds)+'</h3>'
+    + '<p class="muted" style="font-size:12.5px; margin-bottom:2px">Wie lange hast du in der Nacht auf '+fmtDate(ds)+' geschlafen?</p>'
+    + '<label>Schlafdauer (Stunden)</label><input type="number" id="sleep-in" step="0.25" min="0" max="24" value="'+(h>0?String(r1(h)).replace(".",","):"")+'" placeholder="z. B. 7,5">'
+    + '<div class="chips" style="margin-top:10px">'
+    + quick.map(v=>'<button class="chip" onclick="sleepQuick('+v+')">'+String(v).replace(".",",")+' h</button>').join("")
+    + '</div>'
+    + '<label>Schlafqualität (optional)</label><div class="chips" id="sleep-q">'
+    + SLEEP_Q.map(x=>'<button class="chip'+(q===x[0]?" on":"")+'" data-q="'+x[0]+'" aria-pressed="'+(q===x[0])+'" onclick="sleepSetQ('+x[0]+')" title="'+x[2]+'">'+x[1]+' '+x[2]+'</button>').join("")
+    + '</div>'
+    + '<p class="muted" style="font-size:11.5px; margin-top:8px">Dein Ziel: '+fmtHours(sleepTargetH())+' pro Nacht (im Profil änderbar).</p>'
+    + '<div class="row" style="gap:8px; margin-top:14px">'
+    + '<button class="btn grow" onclick="saveSleep(\''+ds+'\')">Speichern</button>'
+    + (h>0?'<button class="btn danger" onclick="deleteSleep(\''+ds+'\')">Löschen</button>':'')
+    + '</div>');
+}
+function sleepQuick(v){
+  const el = document.getElementById("sleep-in");
+  if(el) el.value = String(v).replace(".",",");
+}
+function sleepSetQ(q){
+  sleepPick.q = (sleepPick.q===q) ? 0 : q;
+  const wrap = document.getElementById("sleep-q");
+  if(!wrap) return;
+  for(const b of wrap.querySelectorAll("button")){
+    const on = r0(num(b.getAttribute("data-q"))) === sleepPick.q;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+}
+function saveSleep(ds){
+  const raw = document.getElementById("sleep-in").value;
+  const h = Math.max(0, Math.min(24, num(raw)));
+  if(!(h>0)){ toast("Bitte Schlafdauer eintragen"); return; }
+  const d = getDay(ds);
+  d.sleep = Math.round(h*4)/4;                       // auf Viertelstunden runden
+  if(sleepPick.q>0) d.sleepQ = sleepPick.q; else delete d.sleepQ;
+  save(); closeModal(); renderTab(currentTab);
+  toast("💤 "+fmtHours(d.sleep)+" gespeichert"+(d.sleep>=sleepTargetH()-0.001?" – Ziel erreicht 🎉":""));
+}
+function deleteSleep(ds){
+  const d = state.diary[ds];
+  if(d){ delete d.sleep; delete d.sleepQ; }
+  save(); closeModal(); renderTab(currentTab); toast("Schlaf-Eintrag gelöscht");
+}
+function sleepCardHtml(){
+  const st = sleepStats(7), tgt = st.target, today = todayStr();
+  let h = '<div class="card"><div class="row between"><h3>💤 Schlaf</h3>'
+    + '<button class="btn small" onclick="openSleepModal()">＋ Eintragen</button></div>';
+  if(!st.nights){
+    return h + emptyState('💤','Noch kein Schlaf erfasst','Trage ein, wie lange du geschlafen hast – ab dann siehst du hier Ø-Dauer, Verlauf und wie oft du dein Schlafziel erreicht hast.') + '</div>';
+  }
+  h += '<div class="statgrid" style="margin:12px 0 0">'
+    + '<div class="stat"><b>'+esc(fmtHours(st.avg))+'</b><span>Ø letzte 7 Nächte</span></div>'
+    + '<div class="stat"><b>'+st.reached+' / '+st.nights+'</b><span>Ziel erreicht · '+esc(fmtHours(tgt))+'</span></div></div>';
+
+  let maxH = tgt;
+  for(const d of st.days) if(d.h>maxH) maxH = d.h;
+  const WD = ["So","Mo","Di","Mi","Do","Fr","Sa"];
+  const aria = st.days.map(d=>WD[new Date(d.date+"T12:00:00").getDay()]+": "+(d.h>0?fmtHours(d.h):"kein Eintrag")).join(", ");
+  h += '<div class="slrow" role="img" aria-label="Schlaf der letzten 7 Nächte – '+esc(aria)+'">';
+  for(const d of st.days){
+    const wd = WD[new Date(d.date+"T12:00:00").getDay()];
+    const pct = d.h>0 ? Math.max(8, Math.round(d.h/maxH*100)) : 0;
+    h += '<button class="slcol'+(d.date===today?" today":"")+'" onclick="openSleepModal(\''+d.date+'\')"'
+      + ' aria-label="'+esc(fmtDate(d.date))+': '+(d.h>0?esc(fmtHours(d.h)):"kein Eintrag")+' – eintragen oder ändern">'
+      + '<span class="slval">'+(d.h>0?esc(String(r1(d.h)).replace(".",",")):"–")+'</span>'
+      + '<span class="slbarw">'+(d.h>0?'<i class="slbar'+(d.h>=tgt-0.001?" ok":"")+'" style="height:'+pct+'%"></i>':'')+'</span>'
+      + '<span class="sllab">'+wd+'</span></button>';
+  }
+  h += '</div>';
+
+  // Qualität & Motivationszeile
+  const withQ = st.days.filter(d=>d.q>0);
+  if(withQ.length){
+    let qs = 0; for(const d of withQ) qs += d.q;
+    const qAvg = Math.round(qs/withQ.length);
+    const qi = (SLEEP_Q.find(x=>x[0]===qAvg)||[0,"",""]);
+    h += '<div class="row between" style="padding:6px 0; font-size:13px"><span class="muted">Ø Schlafqualität</span><b>'+qi[1]+' '+esc(qi[2])+'</b></div>';
+  }
+  const streak = sleepStreakDays();
+  let tip;
+  if(streak>=2) tip = '🔥 '+streak+' Nächte in Folge mit erreichtem Schlafziel – top für Regeneration und Muskelaufbau!';
+  else if(st.avg >= tgt-0.001) tip = '✅ Dein Schnitt liegt über dem Ziel – genau so weiter.';
+  else if(st.avg >= tgt-1) tip = '👍 Fast am Ziel – rund '+fmtHours(tgt-st.avg)+' pro Nacht fehlen noch.';
+  else tip = '💡 Im Schnitt '+fmtHours(tgt-st.avg)+' unter deinem Ziel. Zu wenig Schlaf bremst Regeneration, Kraft und Appetitkontrolle.';
+  h += '<p class="muted" style="font-size:12.5px; margin-top:8px; line-height:1.45">'+tip+'</p>';
+  return h + '</div>';
 }
 
 /* ---------- Schnellaktionen am Dashboard (loggen immer für heute) ---------- */
@@ -3423,9 +3637,11 @@ function dayHeatInfo(ds){
   if(d && d.steps) parts.push(d.steps.toLocaleString("de-DE")+" Schritte");
   const acts = d && d.activities ? d.activities.length : 0;
   if(acts) parts.push(acts===1 ? "1 Aktivität" : acts+" Aktivitäten");
+  const slp = sleepOf(ds);
+  if(slp) parts.push(fmtHours(slp)+" Schlaf");
   let lvl = 0;
   if(meals) lvl++;
-  if((d && (d.water || d.steps)) || acts) lvl++;
+  if((d && (d.water || d.steps)) || acts || slp) lvl++;
   if(wk) lvl += 2;
   return {lvl:Math.min(4,lvl), parts};
 }
@@ -3593,14 +3809,15 @@ function renderProgressBody(){
   const thisMon = mondayOf(todayStr());
   const cur = weekStats(thisMon), prev = weekStats(addDays(thisMon,-7));
   html += '<div class="card"><div class="cardhead"><span class="cicon">📅</span><h3>Wochenrückblick</h3><span class="muted">vs. Vorwoche</span></div>';
-  if(cur.days===0 && cur.workouts===0 && prev.days===0 && prev.workouts===0 && cur.steps===0 && prev.steps===0 && cur.water===0 && prev.water===0){
+  if(cur.days===0 && cur.workouts===0 && prev.days===0 && prev.workouts===0 && cur.steps===0 && prev.steps===0 && cur.water===0 && prev.water===0 && cur.nights===0 && prev.nights===0){
     html += emptyState('📅','Noch keine Daten diese Woche','Trage Mahlzeiten ein oder starte ein Workout – hier erscheint dann dein Vergleich zur Vorwoche.');
   } else {
     html += wkRow("Ø Kalorien/Tag", r0(cur.avgKcal)+" kcal", r0(prev.avgKcal)+" kcal", trendMark(cur.avgKcal, prev.avgKcal, state.profile.goal==="abnehmen"))
       + wkRow("Workouts", cur.workouts, prev.workouts, trendMark(cur.workouts, prev.workouts, false))
       + wkRow("Trainingsvolumen", r0(cur.vol).toLocaleString("de-DE")+" kg", r0(prev.vol).toLocaleString("de-DE")+" kg", trendMark(cur.vol, prev.vol, false))
       + wkRow("Schritte", r0(cur.steps).toLocaleString("de-DE"), r0(prev.steps).toLocaleString("de-DE"), trendMark(cur.steps, prev.steps, false))
-      + wkRow("Wasser (Gläser)", cur.water, prev.water, trendMark(cur.water, prev.water, false));
+      + wkRow("Wasser (Gläser)", cur.water, prev.water, trendMark(cur.water, prev.water, false))
+      + wkRow("Ø Schlaf/Nacht", cur.nights?fmtHours(cur.avgSleep):"–", prev.nights?fmtHours(prev.avgSleep):"–", (cur.nights&&prev.nights)?trendMark(cur.avgSleep, prev.avgSleep, false):"");
   }
   html += '</div>';
 
@@ -3659,6 +3876,9 @@ function renderProgressBody(){
   }
   html += '<div class="card"><h3>🍽 Kalorien – letzte 7 Tage</h3>'
     + barChart(days, state.profile.kcalTarget) + '</div>';
+
+  // Schlaf (letzte 7 Nächte)
+  html += sleepCardHtml();
   }
 
   else if(progressSub==="training"){
@@ -3896,14 +4116,18 @@ function deleteMeasure(ds){
 }
 function exportBodyCSV(){
   const csvCell = v => { const s = String(v==null?"":v).replace(/"/g,'""'); return /[";\n]/.test(s) ? '"'+s+'"' : s; };
-  const rows = [["Datum","Gewicht (kg)","Taille (cm)","Brust (cm)","Huefte (cm)","Oberarm (cm)","Oberschenkel (cm)"]];
+  const rows = [["Datum","Gewicht (kg)","Taille (cm)","Brust (cm)","Huefte (cm)","Oberarm (cm)","Oberschenkel (cm)","Schlaf (h)","Schlafqualitaet (1-5)"]];
   const byDate = {};
   for(const w of state.weights){ (byDate[w.date] = byDate[w.date]||{}).kg = w.kg; }
   for(const m of state.measures){ const o = byDate[m.date] = byDate[m.date]||{}; for(const f of MEAS_FIELDS){ if(m[f.k]>0) o[f.k] = m[f.k]; } }
+  for(const ds of Object.keys(state.diary)){
+    const h = sleepOf(ds);
+    if(h>0){ const o = byDate[ds] = byDate[ds]||{}; o.sleep = h; const q = sleepQOf(ds); if(q>0) o.sleepQ = q; }
+  }
   const dates = Object.keys(byDate).sort();
   for(const ds of dates){
     const o = byDate[ds];
-    rows.push([ds, o.kg!=null?r1(o.kg):"", ...MEAS_FIELDS.map(f=>o[f.k]!=null?r1(o[f.k]):"")]);
+    rows.push([ds, o.kg!=null?r1(o.kg):"", ...MEAS_FIELDS.map(f=>o[f.k]!=null?r1(o[f.k]):""), o.sleep!=null?r1(o.sleep):"", o.sleepQ!=null?o.sleepQ:""]);
   }
   if(rows.length===1){ toast("Noch keine Körperdaten zum Exportieren"); return; }
   const csv = "﻿" + rows.map(r=>r.map(csvCell).join(";")).join("\r\n");
@@ -4091,6 +4315,10 @@ function renderProfile(){
     + [1,2,3,4,5,6,7].map(n=>'<option value="'+n+'"'+(p.weeklyGoal===n?" selected":"")+'>'+n+'× pro Woche</option>').join("")
     + '</select>'
     + '<p class="muted" style="font-size:11.5px; margin-top:6px">Mit Wochenziel zeigt das Dashboard deinen Fortschritt (z. B. 2/3) mit Balken – und feiert, wenn du es schaffst.</p>'
+    + '<label>💤 Schlafziel (Stunden pro Nacht)</label><select id="pf-sleep">'
+    + [6,6.5,7,7.5,8,8.5,9,9.5,10].map(n=>'<option value="'+n+'"'+(Math.abs(sleepTargetH()-n)<0.01?" selected":"")+'>'+String(n).replace(".",",")+' Stunden</option>').join("")
+    + '</select>'
+    + '<p class="muted" style="font-size:11.5px; margin-top:6px">Erwachsene brauchen meist 7–9 Stunden. Dein Ziel steuert die Schlaf-Kachel am Start und die Auswertung im Fortschritt.</p>'
     + '</div>'
     + '<button class="btn full" onclick="saveProfile()">Profil speichern</button>';
 
@@ -4144,6 +4372,8 @@ function saveProfile(){
   p.macro = {p:mp, c:mc, f:mf};
   p.waterTarget = Math.max(1, r0(num(document.getElementById("pf-water").value)));
   p.weeklyGoal = Math.max(0, Math.min(7, r0(num(document.getElementById("pf-weekly").value))));
+  const slEl = document.getElementById("pf-sleep");
+  if(slEl){ const sl = num(slEl.value); p.sleepTarget = (sl>0 && sl<=14) ? sl : 8; }
   p.setupDone = true;
   save(); toast("Profil gespeichert ✓");
   renderProfile();
