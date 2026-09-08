@@ -158,6 +158,8 @@
   .nutkpi .nk{background:var(--card2); border:1px solid var(--border); border-radius:14px; padding:11px 10px; text-align:center}
   .nutkpi .nk b{display:block; font-size:19px; letter-spacing:-.4px; font-variant-numeric:tabular-nums}
   .nutkpi .nk > span{display:block; font-size:11px; color:var(--muted); margin-top:3px; line-height:1.35}
+  .mbrow.nb .mbl{width:100px}
+  .mbrow.nb .mbv{width:94px}
   /* Listen */
   .listitem{display:flex; justify-content:space-between; align-items:center; padding:13px 15px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:9px; gap:10px; box-shadow:var(--shadow); transition:transform .15s}
   .listitem:active{transform:scale(.985)}
@@ -3993,14 +3995,15 @@ function nutriCardHtml(){
     + barChart(nutriChartItems(s), s.target||null) + '</div>';
 
   // Verteilung auf die Mahlzeiten
-  h += '<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border)"><h3 style="font-size:14px">Verteilung auf die Mahlzeiten</h3>';
+  h += '<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border)"><h3 style="font-size:14px">Verteilung auf die Mahlzeiten</h3>'
+    + '<p class="muted" style="font-size:11.5px; margin-top:2px">Anteil · Ø kcal je geloggtem Tag</p>';
   const maxM = Math.max.apply(null, Object.keys(MEALS).map(m=>s.meals[m]).concat([1]));
   for(const m of Object.keys(MEALS)){
     const k = s.meals[m], pct = s.totalKcal>0 ? Math.round(k/s.totalKcal*100) : 0;
-    h += '<div class="mbrow"><span class="mbl">'+MEAL_ICONS[m]+' '+MEALS[m]+'</span>'
+    h += '<div class="mbrow nb"><span class="mbl" title="'+MEALS[m]+'">'+MEAL_ICONS[m]+' '+MEALS[m]+'</span>'
       + '<div class="mbtrack" role="img" aria-label="'+MEALS[m]+': '+r0(k)+' Kilokalorien, '+pct+' Prozent">'
       + '<div class="mbfill" style="width:'+Math.max(2, Math.round(k/maxM*100))+'%"></div></div>'
-      + '<span class="mbv">'+pct+'% · '+r0(k/Math.max(1,s.logged))+'/Tag</span></div>';
+      + '<span class="mbv">'+pct+'% · '+r0(k/Math.max(1,s.logged))+'</span></div>';
   }
   h += '</div>';
 
@@ -4009,7 +4012,7 @@ function nutriCardHtml(){
   const maxF = s.top.length ? s.top[0].kcal : 1;
   for(const f of s.top){
     const pct = s.totalKcal>0 ? Math.round(f.kcal/s.totalKcal*100) : 0;
-    h += '<div class="mbrow"><span class="mbl" title="'+esc(f.name)+'">'+esc(f.name)+'</span>'
+    h += '<div class="mbrow nb"><span class="mbl" title="'+esc(f.name)+'">'+esc(f.name)+'</span>'
       + '<div class="mbtrack" role="img" aria-label="'+esc(f.name)+': '+r0(f.kcal)+' Kilokalorien, '+pct+' Prozent, '+f.n+' Einträge">'
       + '<div class="mbfill" style="width:'+Math.max(4, Math.round(f.kcal/maxF*100))+'%"></div></div>'
       + '<span class="mbv">'+r0(f.kcal).toLocaleString("de-DE")+' kcal · '+f.n+'×</span></div>';
