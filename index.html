@@ -146,6 +146,18 @@
   .subtabs{display:flex; background:var(--card); border:1px solid var(--border); border-radius:15px; padding:5px; margin:2px 0 16px; box-shadow:var(--shadow)}
   .subtabs button{flex:1; background:none; color:var(--muted); padding:9px 4px; font-size:13px; font-weight:600; border-radius:11px; transition:.2s}
   .subtabs button.on{background:var(--grad); color:#fff; box-shadow:var(--glow)}
+  .subtabs.tight button{font-size:12px; padding:9px 2px; letter-spacing:-.2px}
+  /* Tagebuch-Eintrag: antippbar zum Bearbeiten */
+  .fooditem .fiedit{background:none; border:0; padding:2px 0; margin:0; text-align:left; color:var(--text); min-width:0; font:inherit; cursor:pointer; border-radius:10px; transition:.18s}
+  .fooditem .fiedit span{display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .fooditem .fiedit .muted{font-size:12px}
+  .fooditem .fiedit:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (hover:hover){ .fooditem .fiedit:hover{color:var(--accent)} }
+  /* Ernährungs-Auswertung */
+  .nutkpi{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:4px 0 14px}
+  .nutkpi .nk{background:var(--card2); border:1px solid var(--border); border-radius:14px; padding:11px 10px; text-align:center}
+  .nutkpi .nk b{display:block; font-size:19px; letter-spacing:-.4px; font-variant-numeric:tabular-nums}
+  .nutkpi .nk span{display:block; font-size:11px; color:var(--muted); margin-top:3px; line-height:1.35}
   /* Listen */
   .listitem{display:flex; justify-content:space-between; align-items:center; padding:13px 15px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:9px; gap:10px; box-shadow:var(--shadow); transition:transform .15s}
   .listitem:active{transform:scale(.985)}
@@ -1821,8 +1833,8 @@ function renderNutrition(){
     html += '<div class="card"><div class="meal-head"><h3>'+MEAL_ICONS[mk]+' '+MEALS[mk]+'</h3><span class="muted">'+r0(sum)+' kcal</span></div>';
     if(!entries.length) html += '<p class="muted" style="padding:4px 0">Noch nichts eingetragen.</p>';
     for(const e of entries){
-      html += '<div class="fooditem"><div class="grow"><div>'+esc(e.name)+'</div>'
-        + '<span class="muted">'+r0(e.grams)+' g · P '+r1(e.p*e.grams/100)+' / K '+r1(e.c*e.grams/100)+' / F '+r1(e.f*e.grams/100)+'</span></div>'
+      html += '<div class="fooditem"><button class="fiedit grow" onclick="openEntryEdit(\''+mk+'\',\''+e.id+'\')" aria-label="'+esc(e.name)+', '+r0(e.grams)+' g – Menge ändern" title="Menge ändern"><span>'+esc(e.name)+'</span>'
+        + '<span class="muted">'+r0(e.grams)+' g · P '+r1(e.p*e.grams/100)+' / K '+r1(e.c*e.grams/100)+' / F '+r1(e.f*e.grams/100)+'</span></button>'
         + '<b style="font-size:13px">'+r0(entryKcal(e))+'</b>'
         + '<button class="del" onclick="deleteFoodEntry(\''+mk+'\',\''+e.id+'\')" aria-label="'+esc(e.name)+' löschen">🗑</button></div>';
     }
@@ -1907,6 +1919,87 @@ function deleteFoodEntry(meal, id){
     save(); if(currentTab==="nutrition") renderNutrition();
     if(currentTab==="dashboard") renderDashboard();
   });
+}
+/* ---------- Tagebuch-Eintrag nachträglich bearbeiten (Menge / Mahlzeit) ---------- */
+let entryEdit = null;   // {date, meal, id, target} – flüchtig, nicht gespeichert
+function findEntry(ds, meal, id){
+  const d = state.diary[ds];                       // bewusst ohne getDay(): legt keinen leeren Tag an
+  const list = d && d.meals ? d.meals[meal] : null;
+  if(!list) return null;
+  const i = list.findIndex(e=>e.id===id);
+  return i<0 ? null : {list:list, i:i, e:list[i]};
+}
+function openEntryEdit(meal, id){
+  const ds = nutriDate, hit = findEntry(ds, meal, id);
+  if(!hit){ toast("Eintrag nicht gefunden"); return; }
+  const e = hit.e, quick = [30,50,100,150,200,250];
+  entryEdit = {date:ds, meal:meal, id:id, target:meal};
+  openModal('<h3>✏️ Eintrag bearbeiten</h3>'
+    + '<div class="card" style="margin-bottom:10px"><b>'+esc(e.name)+'</b>'
+    + '<div class="muted" style="margin-top:4px">pro 100 g: '+r0(e.kcal)+' kcal · P '+r1(e.p)+' · K '+r1(e.c)+' · F '+r1(e.f)+'</div></div>'
+    + '<label for="ee-g">Menge (g / ml)</label>'
+    + '<input type="text" inputmode="decimal" autocomplete="off" id="ee-g" aria-label="Menge in Gramm oder Milliliter" value="'+esc(String(r1(e.grams)).replace(".",","))+'" oninput="updEntryEditPreview()">'
+    + '<div class="chips" style="margin-top:10px">'
+    + quick.map(q=>'<button class="chip" onclick="entryEditQuick('+q+')">'+q+' g</button>').join("")
+    + '</div>'
+    + '<label>Mahlzeit</label><div class="chips">'
+    + Object.keys(MEALS).map(k=>'<button class="chip'+(k===meal?" on":"")+'" id="ee-m-'+k+'" aria-pressed="'+(k===meal)+'" onclick="entryEditMeal(\''+k+'\')">'+MEAL_ICONS[k]+' '+MEALS[k]+'</button>').join("")
+    + '</div>'
+    + '<p id="ee-prev" class="muted" style="margin-top:2px"></p>'
+    + '<div class="row" style="margin-top:14px">'
+    + '<button class="btn ghost" onclick="deleteEntryFromEdit()" aria-label="Eintrag löschen">🗑 Löschen</button>'
+    + '<button class="btn grow" onclick="saveEntryEdit()">Speichern</button></div>');
+  updEntryEditPreview();
+}
+function entryEditQuick(g){
+  const inp = document.getElementById("ee-g");
+  if(inp){ inp.value = String(g); updEntryEditPreview(); }
+}
+function entryEditMeal(k){
+  if(!entryEdit || !MEALS[k]) return;
+  entryEdit.target = k;
+  for(const m of Object.keys(MEALS)){
+    const b = document.getElementById("ee-m-"+m);
+    if(b){ b.classList.toggle("on", m===k); b.setAttribute("aria-pressed", String(m===k)); }
+  }
+}
+function updEntryEditPreview(){
+  const el = document.getElementById("ee-prev");
+  if(!el || !entryEdit) return;
+  const hit = findEntry(entryEdit.date, entryEdit.meal, entryEdit.id);
+  if(!hit){ el.textContent = ""; return; }
+  const e = hit.e, inp = document.getElementById("ee-g");
+  const g = Math.min(5000, Math.max(0, num(inp ? inp.value : e.grams)));
+  const k = e.kcal*g/100, diff = r0(k) - r0(entryKcal(e));
+  el.innerHTML = g>0
+    ? '→ <b style="color:var(--text)">'+r0(k)+' kcal</b> · P '+r1(e.p*g/100)+' / K '+r1(e.c*g/100)+' / F '+r1(e.f*g/100)+' g'
+      + (diff!==0 ? ' <span style="color:'+(diff>0?"var(--orange)":"var(--green)")+'">('+(diff>0?"+":"")+diff+' kcal)</span>' : '')
+    : 'Bitte eine Menge größer als 0 eingeben.';
+}
+function saveEntryEdit(){
+  if(!entryEdit) return;
+  const hit = findEntry(entryEdit.date, entryEdit.meal, entryEdit.id);
+  if(!hit){ toast("Eintrag nicht gefunden"); closeModal(); return; }
+  const inp = document.getElementById("ee-g");
+  const g = Math.min(5000, r1(num(inp ? inp.value : 0)));
+  if(g<=0){ toast("Menge muss größer als 0 sein"); return; }
+  const e = hit.e, moved = entryEdit.target && entryEdit.target!==entryEdit.meal && MEALS[entryEdit.target];
+  e.grams = g;
+  if(moved){
+    hit.list.splice(hit.i,1);
+    getDay(entryEdit.date).meals[entryEdit.target].push(e);
+  }
+  save(); closeModal();
+  if(currentTab==="nutrition") renderNutrition();
+  if(currentTab==="dashboard") renderDashboard();
+  toast(moved ? "Geändert · verschoben zu "+MEALS[entryEdit.target] : "Menge auf "+r1(g)+" g geändert");
+  entryEdit = null;
+}
+function deleteEntryFromEdit(){
+  if(!entryEdit) return;
+  const ee = entryEdit;
+  closeModal(); entryEdit = null;
+  deleteFoodEntry(ee.meal, ee.id);
 }
 function deleteActivity(id){
   const ds = nutriDate, d = getDay(ds);
@@ -3790,11 +3883,149 @@ function prBoardHtml(){
 }
 
 /* ---------- Fortschritt-Tab mit Unter-Reitern ---------- */
-let progressSub = "overview";   // "overview" | "body" | "training" | "data" (nicht persistiert)
+/* ---------- Ernährungs-Auswertung (rein abgeleitet, keine neuen Speicherdaten) ---------- */
+let nutriRange = 7;   // 7 | 30 Tage (nicht persistiert)
+function setNutriRange(n){ nutriRange = (n===30 ? 30 : 7); renderProgressBody(); }
+function dayMacrosRO(ds){          // wie dayTotals, legt aber bewusst keinen leeren Tag an
+  const out = {kcal:0, p:0, c:0, f:0, meals:{breakfast:0, lunch:0, dinner:0, snack:0}, logged:false};
+  const d = state.diary[ds];
+  if(!d || !d.meals) return out;
+  for(const m of Object.keys(MEALS)) for(const e of (d.meals[m]||[])){
+    const k = e.kcal*e.grams/100;
+    out.kcal += k; out.p += e.p*e.grams/100; out.c += e.c*e.grams/100; out.f += e.f*e.grams/100;
+    out.meals[m] += k; out.logged = true;
+  }
+  return out;
+}
+function nutriStats(n){
+  const days = [], mealK = {breakfast:0, lunch:0, dinner:0, snack:0}, foods = {};
+  const tgt = state.profile.kcalTarget||0;
+  let sk=0, sp=0, sc=0, sf=0, logged=0, hit=0, over=0, under=0;
+  for(let i=n-1;i>=0;i--){
+    const ds = addDays(todayStr(), -i);
+    const t = dayMacrosRO(ds);
+    days.push({date:ds, kcal:t.kcal, logged:t.logged});
+    if(!t.logged) continue;
+    logged++; sk+=t.kcal; sp+=t.p; sc+=t.c; sf+=t.f;
+    for(const m of Object.keys(MEALS)) mealK[m] += t.meals[m];
+    if(tgt>0){
+      if(t.kcal > tgt*1.1) over++; else if(t.kcal < tgt*0.9) under++; else hit++;
+    }
+    const d = state.diary[ds];
+    for(const m of Object.keys(MEALS)) for(const e of (d.meals[m]||[])){
+      if(!foods[e.name]) foods[e.name] = {name:e.name, kcal:0, n:0};
+      foods[e.name].kcal += e.kcal*e.grams/100;
+      foods[e.name].n++;
+    }
+  }
+  const top = Object.keys(foods).map(k=>foods[k])
+    .sort((a,b)=> b.kcal-a.kcal || a.name.localeCompare(b.name)).slice(0,5);
+  return {n:n, days:days, logged:logged, totalKcal:sk,
+          avgKcal: logged?sk/logged:0, avgP: logged?sp/logged:0, avgC: logged?sc/logged:0, avgF: logged?sf/logged:0,
+          meals:mealK, hit:hit, over:over, under:under, top:top, target:tgt};
+}
+function nutriTip(s, mt){
+  if(!s.logged) return "";
+  if(mt.p>0 && s.avgP < mt.p*0.85)
+    return "💡 Dein Protein liegt im Schnitt unter dem Ziel – Quark, Skyr, Hüttenkäse oder Hülsenfrüchte schließen die Lücke, ohne viele Kalorien zu kosten.";
+  if(s.target>0 && s.over > s.logged/2)
+    return "💡 An den meisten Tagen über dem Ziel – meist reichen kleinere Portionen bei den Top-Kalorienquellen unten, ganz ohne Verzicht.";
+  if(s.target>0 && s.under > s.logged/2)
+    return "💡 Häufig deutlich unter dem Ziel – dauerhaft zu wenig zu essen bremst Regeneration, Kraft und Stoffwechsel.";
+  if(s.logged < s.n/2)
+    return "💡 Nur an "+s.logged+" von "+s.n+" Tagen geloggt – je lückenloser du trägst, desto belastbarer sind diese Zahlen.";
+  return "✅ Sehr konstant: Zielkorridor an "+s.hit+" von "+s.logged+" geloggten Tagen getroffen – genau so bleibt Fortschritt planbar.";
+}
+function nutriChartItems(s){
+  if(s.n<=7){
+    return s.days.map(d=>({label:["So","Mo","Di","Mi","Do","Fr","Sa"][new Date(d.date+"T12:00:00").getDay()], val:d.kcal}));
+  }
+  const out = [];                     // längerer Zeitraum -> Wochenmittel (nur geloggte Tage zählen)
+  for(let end=s.days.length; end>0; end-=7){          // vom heutigen Tag rückwärts, damit der letzte Block volle 7 Tage hat
+    const chunk = s.days.slice(Math.max(0,end-7), end), lg = chunk.filter(d=>d.logged);
+    let sum = 0; for(const d of lg) sum += d.kcal;
+    const dd = new Date(chunk[0].date+"T12:00:00");
+    out.unshift({label: dd.getDate()+"."+(dd.getMonth()+1)+".", val: lg.length ? sum/lg.length : 0});
+  }
+  return out;
+}
+function nutriCardHtml(){
+  const s = nutriStats(nutriRange), mt = macroTargets();
+  const chips = [[7,"7 Tage"],[30,"30 Tage"]]
+    .map(c=>'<button class="chip'+(nutriRange===c[0]?" on":"")+'" aria-pressed="'+(nutriRange===c[0])+'" onclick="setNutriRange('+c[0]+')">'+c[1]+'</button>').join("");
+  let h = '<div class="card"><div class="cardhead"><span class="cicon">🍽</span><h3>Ernährungs-Auswertung</h3>'
+    + '<span class="muted">Ø je geloggtem Tag</span></div>'
+    + '<div class="chips">'+chips+'</div>';
+  if(!s.logged){
+    return h + emptyState('🍽','Noch keine Mahlzeiten in diesem Zeitraum','Trage im Ernährungstagebuch ein, was du isst – hier erscheinen dann deine Durchschnittswerte, Makros und größten Kalorienquellen.') + '</div>';
+  }
+  const dev = s.target>0 ? r0(s.avgKcal) - r0(s.target) : 0;
+  h += '<div class="nutkpi">'
+    + '<div class="nk"><b>'+r0(s.avgKcal).toLocaleString("de-DE")+'</b><span>Ø kcal/Tag'
+    + (s.target>0 ? (Math.abs(dev)<=0 ? ' · genau im Ziel' : ' · '+(dev>0?"+":"−")+Math.abs(dev)+' vs. Ziel') : '')+'</span></div>'
+    + '<div class="nk"><b>'+s.logged+'<span style="font-size:15px; font-weight:600; color:var(--muted)">/'+s.n+'</span></b><span>Tage geloggt</span></div>'
+    + '</div>';
+
+  // Ø Makros gegen das Ziel
+  h += '<h3 style="font-size:14px; margin-bottom:8px">Ø Makros vs. Ziel</h3><div class="mgrid">'
+    + macroBar("Protein", s.avgP, mt.p)
+    + macroBar("Kohlenh.", s.avgC, mt.c)
+    + macroBar("Fett", s.avgF, mt.f)
+    + '</div>';
+  const bw = state.weights.length ? state.weights[state.weights.length-1].kg : state.profile.weight;
+  if(bw>0){
+    const pkg = s.avgP/bw;
+    h += '<p class="muted" style="font-size:12px; margin-top:10px">🥩 Ø Protein: <b style="color:var(--text)">'+r1(pkg)+' g pro kg Körpergewicht</b> · '
+      + (pkg>=1.6 ? 'gut für Muskelaufbau und -erhalt' : pkg>=1.2 ? 'solide – 1,6 g/kg gelten beim Muskelaufbau als Richtwert' : 'unter dem Richtwert von 1,6 g/kg beim Muskelaufbau')+'</p>';
+  }
+
+  // Zielkorridor (±10 %)
+  if(s.target>0){
+    h += '<div class="row between" style="margin-top:12px; padding-top:11px; border-top:1px solid var(--border)">'
+      + '<span class="muted" style="font-size:12.5px">🎯 Im Zielkorridor (±10 %)</span>'
+      + '<b style="font-size:13px">'+s.hit+' von '+s.logged+' Tagen</b></div>'
+      + '<p class="muted" style="font-size:11.5px; margin-top:2px">'+s.over+'× darüber · '+s.under+'× darunter</p>';
+  }
+
+  // Verlauf
+  h += '<div style="margin-top:12px"><h3 style="font-size:14px; margin-bottom:2px">Kalorien im Verlauf'
+    + (s.n>7 ? ' <span class="muted" style="font-size:11.5px; font-weight:500">(Wochenmittel)</span>' : '')+'</h3>'
+    + barChart(nutriChartItems(s), s.target||null) + '</div>';
+
+  // Verteilung auf die Mahlzeiten
+  h += '<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border)"><h3 style="font-size:14px">Verteilung auf die Mahlzeiten</h3>';
+  const maxM = Math.max.apply(null, Object.keys(MEALS).map(m=>s.meals[m]).concat([1]));
+  for(const m of Object.keys(MEALS)){
+    const k = s.meals[m], pct = s.totalKcal>0 ? Math.round(k/s.totalKcal*100) : 0;
+    h += '<div class="mbrow"><span class="mbl">'+MEAL_ICONS[m]+' '+MEALS[m]+'</span>'
+      + '<div class="mbtrack" role="img" aria-label="'+MEALS[m]+': '+r0(k)+' Kilokalorien, '+pct+' Prozent">'
+      + '<div class="mbfill" style="width:'+Math.max(2, Math.round(k/maxM*100))+'%"></div></div>'
+      + '<span class="mbv">'+pct+'% · '+r0(k/Math.max(1,s.logged))+'/Tag</span></div>';
+  }
+  h += '</div>';
+
+  // Größte Kalorienquellen
+  h += '<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border)"><h3 style="font-size:14px">Größte Kalorienquellen</h3>';
+  const maxF = s.top.length ? s.top[0].kcal : 1;
+  for(const f of s.top){
+    const pct = s.totalKcal>0 ? Math.round(f.kcal/s.totalKcal*100) : 0;
+    h += '<div class="mbrow"><span class="mbl" title="'+esc(f.name)+'">'+esc(f.name)+'</span>'
+      + '<div class="mbtrack" role="img" aria-label="'+esc(f.name)+': '+r0(f.kcal)+' Kilokalorien, '+pct+' Prozent, '+f.n+' Einträge">'
+      + '<div class="mbfill" style="width:'+Math.max(4, Math.round(f.kcal/maxF*100))+'%"></div></div>'
+      + '<span class="mbv">'+r0(f.kcal).toLocaleString("de-DE")+' kcal · '+f.n+'×</span></div>';
+  }
+  h += '</div>';
+
+  const tip = nutriTip(s, mt);
+  if(tip) h += '<p class="muted" style="font-size:12px; margin-top:13px">'+tip+'</p>';
+  return h + '</div>';
+}
+
+let progressSub = "overview";   // "overview" | "body" | "nutrition" | "training" | "data" (nicht persistiert)
 function progressTab(s){ progressSub = s; renderProgress(); }
 function renderProgress(){
-  const tabs = [["overview","Überblick"],["body","Körper"],["training","Training"],["data","Daten"]];
-  document.getElementById("view-progress").innerHTML = '<div class="subtabs">'
+  const tabs = [["overview","Überblick"],["body","Körper"],["nutrition","Ernährung"],["training","Training"],["data","Daten"]];
+  document.getElementById("view-progress").innerHTML = '<div class="subtabs tight">'
     + tabs.map(t=>'<button class="'+(progressSub===t[0]?"on":"")+'" onclick="progressTab(\''+t[0]+'\')">'+t[1]+'</button>').join("")
     + '</div><div id="progress-body"></div>';
   renderProgressBody();
@@ -3868,17 +4099,13 @@ function renderProgressBody(){
   // Körpermaße
   html += measureCardHtml();
 
-  // Kalorien letzte 7 Tage
-  const days = [];
-  for(let i=6;i>=0;i--){
-    const ds = addDays(todayStr(), -i);
-    days.push({label:["So","Mo","Di","Mi","Do","Fr","Sa"][new Date(ds+"T12:00:00").getDay()], val:dayTotals(ds).kcal});
-  }
-  html += '<div class="card"><h3>🍽 Kalorien – letzte 7 Tage</h3>'
-    + barChart(days, state.profile.kcalTarget) + '</div>';
-
   // Schlaf (letzte 7 Nächte)
   html += sleepCardHtml();
+  }
+
+  else if(progressSub==="nutrition"){
+  // Ernährungs-Auswertung: Ø kcal & Makros, Zielkorridor, Verlauf, Mahlzeiten-Verteilung, Top-Quellen
+  html += nutriCardHtml();
   }
 
   else if(progressSub==="training"){
