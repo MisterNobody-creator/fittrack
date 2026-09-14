@@ -199,6 +199,21 @@
   .stlegend .lw{color:#f59e0b} .stlegend .ld{color:#a855f7} .stlegend .lf{color:var(--red)}
   .stag{font-size:10px; font-weight:700; letter-spacing:.3px; vertical-align:top}
   .stag.w{color:#f59e0b} .stag.d{color:#a855f7} .stag.f{color:var(--red)}
+  /* Ausdauer-Board: Zeilen duerfen zweizeilig umbrechen (Einheiten · Datum · Pace) */
+  .prrow.crow .prmain span{white-space:normal; line-height:1.35}
+  /* Cardio: "Zuletzt"-Spalte braucht etwas mehr Platz (z. B. 33′ 6,2) */
+  .setrow.wp.cardio{grid-template-columns:24px 60px 1fr 1fr 34px 24px}
+  .setrow.cardio input::placeholder{font-weight:500; opacity:.55}
+  /* Cardio: Summenzeile unter den Sätzen (Dauer, Distanz, Pace) */
+  .csum{display:flex; flex-wrap:wrap; gap:4px 14px; align-items:center; font-size:12px; color:var(--muted);
+        margin:2px 0 8px; padding:7px 11px; background:var(--card2); border:1px solid var(--border); border-radius:11px}
+  .csum span{font-weight:600; white-space:nowrap}
+  .csum span:first-child{color:var(--text)}
+  /* Trainings-Verlauf: Filterzeile und Monatsüberschriften */
+  .hsum{display:flex; flex-wrap:wrap; gap:2px 10px; align-items:baseline; margin:14px 2px 7px}
+  .hsum b{font-size:13.5px; letter-spacing:.2px}
+  .hsum span{font-size:11.5px; color:var(--muted)}
+  .hsum:first-child{margin-top:4px}
   /* Notiz zur Uebung (dauerhaft je Uebung) */
   .exnote{display:flex; align-items:flex-start; gap:6px; width:100%; font-size:12px; color:var(--muted); background:var(--card2); border:1px solid var(--border); border-radius:10px; padding:7px 10px; margin-bottom:7px; text-align:left; line-height:1.45; transition:.16s}
   .exnote.has{color:var(--text); border-color:var(--border2); font-style:italic}
@@ -1197,10 +1212,10 @@ const EXERCISE_DB = [
  {id:"plank",name:"Plank",muscle:"Bauch",equip:"Körpergewicht",desc:"Unterarmstütz, Körper bildet eine Linie. Bauch und Po anspannen, Position halten. Bei 'Wdh.' die Sekunden eintragen."},
  {id:"legraise",name:"Beinheben (hängend)",muscle:"Bauch",equip:"Körpergewicht",desc:"An der Stange hängend die Beine (oder Knie) kontrolliert anheben und absenken. Nicht schwingen."},
  {id:"russian",name:"Russian Twists",muscle:"Bauch",equip:"Körpergewicht",desc:"Sitzend, Oberkörper leicht zurückgelehnt, Füße evtl. angehoben. Oberkörper mit oder ohne Gewicht seitlich rotieren."},
- {id:"run",name:"Laufen",muscle:"Cardio",equip:"—",desc:"Ausdauertraining. Bei 'Gewicht' die Distanz in km, bei 'Wdh.' die Minuten eintragen – oder als Aktivität in der Ernährung loggen."},
- {id:"bike",name:"Radfahren",muscle:"Cardio",equip:"—",desc:"Gelenkschonendes Ausdauertraining. Bei 'Gewicht' km, bei 'Wdh.' Minuten eintragen."},
- {id:"rowing",name:"Rudergerät",muscle:"Cardio",equip:"Maschine",desc:"Ganzkörper-Cardio: Beine drücken, dann Oberkörper leicht zurück, dann Arme ziehen. Reihenfolge rückwärts zurück."},
- {id:"jumprope",name:"Seilspringen",muscle:"Cardio",equip:"Springseil",desc:"Intensives Cardio. Auf den Fußballen federn, Sprünge klein halten. Bei 'Wdh.' die Minuten eintragen."}
+ {id:"run",name:"Laufen",muscle:"Cardio",equip:"—",desc:"Ausdauertraining. Im Workout werden Dauer (Minuten) und Distanz (km) erfasst – die Pace berechnet die App. Alternativ als Aktivität in der Ernährung loggen."},
+ {id:"bike",name:"Radfahren",muscle:"Cardio",equip:"—",desc:"Gelenkschonendes Ausdauertraining. Im Workout Dauer in Minuten und Distanz in km eintragen – Schnitt und Pace rechnet die App."},
+ {id:"rowing",name:"Rudergerät",muscle:"Cardio",equip:"Maschine",desc:"Ganzkörper-Cardio: Beine drücken, dann Oberkörper leicht zurück, dann Arme ziehen. Reihenfolge rückwärts zurück. Erfasst wird die Dauer, optional die Distanz."},
+ {id:"jumprope",name:"Seilspringen",muscle:"Cardio",equip:"Springseil",desc:"Intensives Cardio. Auf den Fußballen federn, Sprünge klein halten. Erfasst wird die Dauer in Minuten (Distanz bleibt leer)."}
 ];
 
 /* ---------- Trainingsplan-Vorlagen ---------- */
@@ -2654,6 +2669,7 @@ function applyCoach(idx){
    ============================================================ */
 let trainingSub = "workout";
 let exFilter = {muscle:"", q:""};
+let histFilter = {q:"", days:0};      // Verlauf-Filter (flüchtig, nicht gespeichert)
 
 function renderTraining(){
   let html = '<div class="subtabs">'
@@ -2721,18 +2737,12 @@ function renderTrainingBody(){
     el.innerHTML = h;
   }
   else if(trainingSub==="history"){
-    let h = "";
-    const sess = state.sessions.slice().sort((a,b)=>b.date.localeCompare(a.date) || (b.start||0)-(a.start||0));
-    if(!sess.length) h = emptyState('🏋️','Noch keine Workouts absolviert','Starte dein erstes Workout im Reiter „Workout“ – hier erscheint danach dein Trainings-Verlauf.');
-    for(const s of sess){
-      h += '<details class="sess"><summary><div><b style="font-size:14px">'+esc(s.name)+'</b><br><span class="muted" style="font-size:12px">'+fmtDate(s.date)+' · '+(s.durationMin||0)+' min · '+r0(sessionVolume(s)).toLocaleString("de-DE")+' kg Volumen</span></div><span class="muted">▾</span></summary><div class="body">';
-      if(s.note) h += '<div class="muted" style="font-size:12.5px; font-style:italic; margin-bottom:8px">📝 '+esc(s.note)+'</div>';
-      for(const e of s.entries){
-        h += '<div class="sexc"><b style="cursor:pointer" onclick="openExerciseDetail(\''+esc(e.exId)+'\')" title="Fortschritt anzeigen">'+esc(e.name)+' <span class="muted" style="font-size:11px">📈</span></b><div class="st">'+e.sets.map(st=>r1(st.kg)+" kg × "+st.reps+setTag(st)).join("  ·  ")+'</div></div>';
-      }
-      h += '<div class="row" style="gap:8px; margin-top:4px"><button class="btn small ghost" onclick="repeatWorkout(\''+s.id+'\')" title="Gleiches Workout erneut starten">🔁 Wiederholen</button><button class="btn small ghost" onclick="shareWorkout(\''+s.id+'\')" title="Workout als Bild teilen">📤 Teilen</button><button class="btn small ghost" onclick="saveSessionAsPlan(\''+s.id+'\')" title="Übungen und Sätze dieses Workouts als Trainingsplan speichern">📋 Als Plan</button><button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></div></details>';
-    }
-    el.innerHTML = h;
+    const ranges = [[0,"Alle"],[30,"30 Tage"],[90,"3 Monate"],[365,"1 Jahr"]];
+    el.innerHTML = '<input type="search" id="hist-q" placeholder="Workout oder Übung suchen…" aria-label="Trainings-Verlauf durchsuchen" value="'+esc(histFilter.q)+'" oninput="histFilter.q=this.value; renderHistList()">'
+      + '<div class="chips" style="margin-top:10px">'
+      + ranges.map(r=>'<button class="chip'+(histFilter.days===r[0]?" on":"")+'" onclick="setHistRange('+r[0]+')">'+r[1]+'</button>').join("")
+      + '</div><div id="hist-list"></div>';
+    renderHistList();
   }
   else if(trainingSub==="exercises"){
     const muscles = [...new Set(allExercises().map(e=>e.muscle))];
@@ -2744,6 +2754,63 @@ function renderTrainingBody(){
     el.innerHTML = h;
     renderExList();
   }
+}
+/* ---------- Trainings-Verlauf: Suche, Zeitraum-Filter, Monatsgruppierung ---------- */
+function setHistRange(d){ histFilter.days = d; renderTrainingBody(); }
+function histSessions(){
+  const q = histFilter.q.trim().toLowerCase();
+  const from = histFilter.days>0 ? addDays(todayStr(), -(histFilter.days-1)) : "";
+  return state.sessions.filter(function(s){
+    if(from && s.date < from) return false;
+    if(!q) return true;
+    if(String(s.name||"").toLowerCase().includes(q)) return true;
+    if(String(s.note||"").toLowerCase().includes(q)) return true;
+    return (s.entries||[]).some(e=>String(e.name||"").toLowerCase().includes(q));
+  }).sort((a,b)=>b.date.localeCompare(a.date) || (b.start||0)-(a.start||0));
+}
+function monthLabel(ds){
+  const d = new Date(ds+"T12:00:00");
+  return isNaN(d.getTime()) ? String(ds||"") : d.toLocaleDateString("de-DE",{month:"long", year:"numeric"});
+}
+function sessionCardHtml(s){
+  let h = '<details class="sess"><summary><div><b style="font-size:14px">'+esc(s.name)+'</b><br><span class="muted" style="font-size:12px">'+fmtDate(s.date)+' · '+(s.durationMin||0)+' min · '+r0(sessionVolume(s)).toLocaleString("de-DE")+' kg Volumen</span></div><span class="muted">▾</span></summary><div class="body">';
+  if(s.note) h += '<div class="muted" style="font-size:12.5px; font-style:italic; margin-bottom:8px">📝 '+esc(s.note)+'</div>';
+  for(const e of (s.entries||[])){
+    h += '<div class="sexc"><b style="cursor:pointer" onclick="openExerciseDetail(\''+esc(e.exId)+'\')" title="Fortschritt anzeigen">'+esc(e.name)+' <span class="muted" style="font-size:11px">📈</span></b><div class="st">'+(e.sets||[]).map(st=>setText(e.exId, st)).join("  ·  ")+'</div></div>';
+  }
+  return h + '<div class="row" style="gap:8px; margin-top:4px"><button class="btn small ghost" onclick="repeatWorkout(\''+s.id+'\')" title="Gleiches Workout erneut starten">🔁 Wiederholen</button><button class="btn small ghost" onclick="shareWorkout(\''+s.id+'\')" title="Workout als Bild teilen">📤 Teilen</button><button class="btn small ghost" onclick="saveSessionAsPlan(\''+s.id+'\')" title="Übungen und Sätze dieses Workouts als Trainingsplan speichern">📋 Als Plan</button><button class="btn small danger" onclick="deleteSession(\''+s.id+'\')">Workout löschen</button></div></div></details>';
+}
+function renderHistList(){
+  const el = document.getElementById("hist-list");
+  if(!el) return;
+  if(!state.sessions.length){
+    el.innerHTML = emptyState('🏋️','Noch keine Workouts absolviert','Starte dein erstes Workout im Reiter „Workout“ – hier erscheint danach dein Trainings-Verlauf.');
+    return;
+  }
+  const sess = histSessions();
+  const filtered = !!(histFilter.q.trim() || histFilter.days);
+  if(!sess.length){
+    el.innerHTML = '<p class="empty">Kein Workout gefunden – andere Suche oder anderen Zeitraum wählen.</p>';
+    return;
+  }
+  const groups = [];
+  for(const s of sess){
+    const m = monthLabel(s.date);
+    if(!groups.length || groups[groups.length-1].m !== m) groups.push({m:m, items:[]});
+    groups[groups.length-1].items.push(s);
+  }
+  let h = filtered
+    ? '<p class="muted" style="font-size:12px; margin:12px 2px 0">'+sess.length+' von '+state.sessions.length+' Workouts</p>'
+    : '';
+  for(const g of groups){
+    let vol = 0, min = 0;
+    for(const x of g.items){ vol += sessionVolume(x); min += (x.durationMin||0); }
+    h += '<div class="hsum"><b>'+esc(g.m)+'</b><span>'+g.items.length+(g.items.length===1?' Workout':' Workouts')
+      + (vol>0 ? ' · '+r0(vol).toLocaleString("de-DE")+' kg' : '')
+      + (min>0 ? ' · '+esc(fmtMin(min)) : '')+'</span></div>';
+    h += g.items.map(sessionCardHtml).join("");
+  }
+  el.innerHTML = h;
 }
 function renderExList(){
   const el = document.getElementById("ex-list");
@@ -2781,10 +2848,90 @@ function nextSetType(t){
   return SET_TYPES[(i+1) % SET_TYPES.length].k;
 }
 
+/* ---------- Cardio-Übungen: Dauer & Distanz statt kg × Wdh. ----------
+   Übungen der Muskelgruppe "Cardio" werden pro Satz mit Minuten (min) und
+   Kilometern (km) erfasst – beide Felder sind additiv und optional.
+   Rückwärtskompatibel: Ältere Cardio-Sätze wurden – wie es die Übungs-
+   beschreibungen bisher empfahlen – als kg = km und Wdh. = Minuten erfasst;
+   fehlen min/km, werden kg/reps genau so gelesen. Gespeichertes wird nie
+   umgeschrieben, alte Einheiten erscheinen dadurch automatisch korrekt.     */
+function isCardioEx(exId){
+  const e = getExercise(exId);
+  return !!(e && e.muscle === "Cardio");
+}
+function isCardioSet(st){ return !!st && (st.min != null || st.km != null); }
+function cardioVals(st){
+  if(!st) return {min:0, km:0};
+  const nw = isCardioSet(st);
+  const min = nw ? num(st.min) : num(st.reps);
+  const km  = nw ? num(st.km)  : num(st.kg);
+  return {min: min>0 ? min : 0, km: km>0 ? km : 0};
+}
+function fmtNum(v){ return (Math.round(v*10)/10).toLocaleString("de-DE"); }
+function fmtMin(min){
+  const m = Math.round(min||0);
+  if(m < 60) return m+" min";
+  const h = Math.floor(m/60), r = m%60;
+  return r ? h+" h "+r+" min" : h+" h";
+}
+function cardioPace(min, km){
+  if(!(min>0) || !(km>0)) return "";
+  const s = Math.round(min*60/km);
+  return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")+" min/km";
+}
+function cardioText(st){
+  const c = cardioVals(st);
+  const parts = [];
+  if(c.min>0) parts.push(fmtNum(c.min)+" min");
+  if(c.km>0)  parts.push(fmtNum(c.km)+" km");
+  return parts.length ? parts.join(" · ") : "–";
+}
+/* Einheitliche Satz-Beschriftung für Historie, Detail, Verlauf usw. */
+function setText(exId, st){
+  return isCardioEx(exId) ? cardioText(st)+setTag(st) : r1(st.kg)+" kg × "+st.reps+setTag(st);
+}
+function cardioHistory(exId){
+  const out = [];
+  const sess = state.sessions.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.start||0)-(b.start||0));
+  for(const s of sess){
+    const e = s.entries.find(x=>x.exId===exId);
+    if(!e || !e.sets || !e.sets.length) continue;
+    const ws = workSets(e.sets);            // Aufwärm-Sätze zählen auch hier nicht
+    if(!ws.length) continue;
+    let min = 0, km = 0, bestKm = 0, bestMin = 0;
+    for(const st of ws){
+      const c = cardioVals(st);
+      min += c.min; km += c.km;
+      if(c.km  > bestKm)  bestKm  = c.km;
+      if(c.min > bestMin) bestMin = c.min;
+    }
+    if(min<=0 && km<=0) continue;
+    out.push({date:s.date, min, km, bestKm, bestMin, pace:(min>0 && km>0) ? min/km : 0, sets:e.sets});
+  }
+  return out;
+}
+function cardioTip(exId){
+  const hist = cardioHistory(exId);
+  if(!hist.length) return null;
+  const last = hist[hist.length-1];
+  const l3 = hist.slice(-3);
+  const plateau = l3.length===3 && l3.every(h=>Math.abs(h.km-last.km)<0.05 && Math.abs(h.min-last.min)<0.5);
+  if(last.km > 0){
+    const nk = Math.round(last.km*1.1*10)/10;
+    return {cardio:true, min:r1(last.min), km:nk, plateau:plateau,
+      text:"Vorschlag: "+fmtNum(nk)+" km"+(last.min>0 ? " in ca. "+r0(last.min*1.1)+" min" : "")
+        + (plateau ? " – 3× dieselbe Runde, leg was drauf" : " – rund 10 % mehr als letztes Mal")};
+  }
+  const nm = r0(last.min) + (last.min>=30 ? 5 : 2);
+  return {cardio:true, min:nm, km:0, plateau:plateau,
+    text:"Vorschlag: "+nm+" min"+(plateau ? " – 3× dieselbe Dauer, leg was drauf" : " (letztes Mal "+r0(last.min)+" min)")};
+}
+
 /* ---------- Übungs-Fortschritt & persönliche Rekorde ---------- */
 function e1rm(kg, reps){ if(!kg || !reps) return 0; return reps===1 ? kg : kg*(1+reps/30); }
 function exHistory(exId){
   const out = [];
+  if(isCardioEx(exId)) return out;        // Cardio hat eigene Auswertung (cardioHistory)
   const sess = state.sessions.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.start||0)-(b.start||0));
   for(const s of sess){
     const e = s.entries.find(x=>x.exId===exId);
@@ -2827,7 +2974,36 @@ function openExerciseDetail(id){
   const hist = exHistory(id);
   let h = '<h3>'+esc(e.name)+'</h3>'
     + '<p class="muted">'+esc(e.muscle)+' · '+esc(e.equip)+'</p>';
-  if(hist.length){
+  if(isCardioEx(id)){
+    const ch = cardioHistory(id);
+    if(ch.length){
+      let sumMin = 0, sumKm = 0, bestKm = 0, bestMin = 0, bestPace = 0;
+      for(const x of ch){
+        sumMin += x.min; sumKm += x.km;
+        if(x.bestKm > bestKm)   bestKm = x.bestKm;
+        if(x.bestMin > bestMin) bestMin = x.bestMin;
+        if(x.pace > 0 && (bestPace === 0 || x.pace < bestPace)) bestPace = x.pace;
+      }
+      h += '<div class="statgrid" style="margin:12px 0 0">'
+        + '<div class="stat"><b>'+(sumKm>0 ? fmtNum(sumKm)+' km' : '–')+'</b><span>🏃 Gesamtdistanz</span></div>'
+        + '<div class="stat"><b>'+fmtMin(sumMin)+'</b><span>⏱ Gesamtdauer</span></div>'
+        + '<div class="stat"><b>'+(bestKm>0 ? fmtNum(bestKm)+' km' : (bestMin>0 ? fmtNum(bestMin)+' min' : '–'))+'</b><span>🏆 Längste Einheit</span></div>'
+        + '<div class="stat"><b>'+(bestPace>0 ? cardioPace(bestPace,1) : '–')+'</b><span>⚡ Beste Pace</span></div></div>';
+      const cpts = ch.filter(x=>x.km>0).slice(-12).map(x=>({x:x.date, y:r1(x.km)}));
+      if(cpts.length>=2) h += '<h2 style="margin-top:16px">Distanz-Verlauf <span class="muted" style="font-weight:400; font-size:12px">km je Einheit</span></h2>' + lineChart(cpts);
+      else {
+        const mpts = ch.filter(x=>x.min>0).slice(-12).map(x=>({x:x.date, y:r1(x.min)}));
+        if(mpts.length>=2) h += '<h2 style="margin-top:16px">Dauer-Verlauf <span class="muted" style="font-weight:400; font-size:12px">Minuten je Einheit</span></h2>' + lineChart(mpts);
+      }
+      h += '<h2 style="margin-top:14px">Letzte Einheiten</h2>';
+      for(const x of ch.slice(-3).reverse()){
+        const p = cardioPace(x.min, x.km);
+        h += '<div class="sexc" style="padding:7px 0; border-top:1px solid var(--border)"><b style="font-size:13px">'+fmtDate(x.date)+(p?' <span class="muted" style="font-weight:400; font-size:11.5px">'+p+'</span>':'')+'</b>'
+          + '<div class="st muted" style="font-size:13px">'+x.sets.map(st=>cardioText(st)+setTag(st)).join("  ·  ")+'</div></div>';
+      }
+    }
+  }
+  else if(hist.length){
     const bk = hist.reduce((a,b)=>(b.bestKg>a.bestKg || (b.bestKg===a.bestKg && b.bestReps>a.bestReps))?b:a);
     const b1 = Math.max(...hist.map(x=>x.e1rm));
     const vol = hist.reduce((s,x)=>s+x.vol,0);
@@ -2882,15 +3058,27 @@ function deleteSession(id){
 }
 function sessionVolume(s){
   let v = 0;
-  for(const e of s.entries) for(const st of workSets(e.sets)) v += (st.kg||0)*(st.reps||0);
+  for(const e of s.entries){
+    if(isCardioEx(e.exId)) continue;          // Cardio hat kein Hantel-Volumen
+    for(const st of workSets(e.sets)) v += (st.kg||0)*(st.reps||0);
+  }
   return v;
 }
 function lastPerf(exId){
   const sess = state.sessions.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const cardio = isCardioEx(exId);
   for(const s of sess){
     const e = s.entries.find(x=>x.exId===exId);
     const ws = e ? workSets(e.sets) : [];
     if(ws.length){
+      if(cardio){
+        let min = 0, km = 0;
+        for(const st of ws){ const c = cardioVals(st); min += c.min; km += c.km; }
+        if(min<=0 && km<=0) continue;
+        const p = cardioPace(min, km);
+        return (min>0 ? fmtNum(min)+" min" : "") + (min>0&&km>0 ? " · " : "") + (km>0 ? fmtNum(km)+" km" : "")
+          + (p ? " ("+p+")" : "") + " ("+fmtDate(s.date)+")";
+      }
       const best = ws.reduce((a,b)=>(b.kg||0)>(a.kg||0)?b:a, ws[0]);
       return r1(best.kg)+" kg × "+best.reps+" ("+fmtDate(s.date)+")";
     }
@@ -3061,8 +3249,13 @@ function startWorkout(plan){
       const e = getExercise(it.exId);
       if(!e) continue;
       const sets = [];
+      const cardio = isCardioEx(it.exId);
       const lastKg = lastKgFor(it.exId);
-      for(let i=0;i<it.sets;i++) sets.push({kg:lastKg, reps:it.reps, done:false});
+      const prevC = cardio ? (lastSetsFor(it.exId)||{sets:[]}).sets : null;
+      for(let i=0;i<it.sets;i++){
+        if(cardio){ const c = cardioVals(prevC && prevC[i]); sets.push({min:c.min, km:c.km, done:false}); }
+        else sets.push({kg:lastKg, reps:it.reps, done:false});
+      }
       entries.push({exId:it.exId, name:e.name, sets});
     }
   }
@@ -3080,7 +3273,9 @@ function repeatWorkout(id){
   if(state.active && !confirm("Es läuft bereits ein Workout. Neues starten und das alte verwerfen?")){ openWorkoutOverlay(); return; }
   const entries = s.entries
     .map(e=>({exId:e.exId, name:e.name, sets:e.sets.map(st=>{
-      const c = {kg:st.kg||0, reps:st.reps||0, done:false};
+      let c;
+      if(isCardioEx(e.exId)){ const v = cardioVals(st); c = {min:v.min, km:v.km, done:false}; }
+      else c = {kg:st.kg||0, reps:st.reps||0, done:false};
       if(setType(st)) c.t = setType(st);      // Satz-Typ (z. B. Aufwärmsatz) mit übernehmen
       return c;
     })}))
@@ -3482,20 +3677,25 @@ function awUsePrev(ei, si){
   const prev = lastSetsFor(e.exId), st = e.sets[si];
   const p = prev && prev.sets[si];
   if(!p || !st) return;
-  st.kg = p.kg||0; st.reps = p.reps||0;
+  if(isCardioEx(e.exId)){ const c = cardioVals(p); st.min = c.min; st.km = c.km; }
+  else { st.kg = p.kg||0; st.reps = p.reps||0; }
   save(); renderActiveWorkout();
   toast("Werte vom letzten Mal übernommen");
 }
 function awApplyTip(ei){
   const e = state.active && state.active.entries[ei];
   if(!e) return;
-  const tip = progressionTip(e.exId);
+  const cardio = isCardioEx(e.exId);
+  const tip = cardio ? cardioTip(e.exId) : progressionTip(e.exId);
   if(!tip) return;
   let i = e.sets.findIndex(s=>!s.done);
-  if(i < 0){ e.sets.push({kg:0, reps:0, done:false}); i = e.sets.length-1; }
-  e.sets[i].kg = tip.kg; e.sets[i].reps = tip.reps;
+  if(i < 0){ e.sets.push(cardio ? {min:0, km:0, done:false} : {kg:0, reps:0, done:false}); i = e.sets.length-1; }
+  if(cardio){ e.sets[i].min = tip.min; e.sets[i].km = tip.km; }
+  else { e.sets[i].kg = tip.kg; e.sets[i].reps = tip.reps; }
   save(); renderActiveWorkout();
-  toast("🎯 Satz "+(i+1)+": "+(tip.kg>0 ? fmtKg(tip.kg)+" kg × "+tip.reps : tip.reps+" Wdh.")+" übernommen");
+  toast("🎯 Satz "+(i+1)+": "+(cardio
+      ? (tip.km>0 ? fmtNum(tip.km)+" km" : fmtNum(tip.min)+" min")
+      : (tip.kg>0 ? fmtKg(tip.kg)+" kg × "+tip.reps : tip.reps+" Wdh."))+" übernommen");
 }
 
 function renderActiveWorkout(){
@@ -3520,9 +3720,10 @@ function renderActiveWorkout(){
     + '<span><b class="ld">D</b> Dropsatz</span><span><b class="lf">F</b> bis zum Versagen</span></div>';
 
   aw.entries.forEach((e,ei)=>{
+    const cardio = isCardioEx(e.exId);
     const last = lastPerf(e.exId);
     const prev = lastSetsFor(e.exId);
-    const tip  = progressionTip(e.exId);
+    const tip  = cardio ? cardioTip(e.exId) : progressionTip(e.exId);
     const wp   = prev ? " wp" : "";
     h += '<div class="card aw-ex"><div class="row between"><h3 style="margin:0; cursor:pointer" onclick="openExerciseDetail(\''+e.exId+'\')">'+esc(e.name)+' <span class="muted" style="font-size:12px">ℹ️</span></h3>'
       + '<div class="row" style="gap:0">'
@@ -3532,9 +3733,10 @@ function renderActiveWorkout(){
       + (last?'<div class="hint">Letztes Mal: '+last+'</div>':'')
       + exNoteBtnHtml(e.exId)
       + (tip?'<button class="tipbtn" onclick="awApplyTip('+ei+')" title="Vorschlag in den nächsten offenen Satz übernehmen" aria-label="'+esc(tip.text)+' – in den nächsten offenen Satz übernehmen"><span>🎯</span><span>'+esc(tip.text)+'</span></button>':'')
-      + '<div class="setrow'+wp+'" style="margin-top:6px"><span class="num">#</span>'
+      + '<div class="setrow'+wp+(cardio?" cardio":"")+'" style="margin-top:6px"><span class="num">#</span>'
       + (prev?'<span class="num" style="font-size:10.5px; text-transform:uppercase; letter-spacing:.4px">Zuletzt</span>':'')
-      + '<span class="num">kg</span><span class="num">Wdh.</span><span></span></div>';
+      + (cardio ? '<span class="num">Min</span><span class="num">km</span>' : '<span class="num">kg</span><span class="num">Wdh.</span>')
+      + '<span></span></div>';
     let wn = 0;
     e.sets.forEach((st,si)=>{
       const p = prev ? prev.sets[si] : null;
@@ -3542,18 +3744,36 @@ function renderActiveWorkout(){
       if(!warm) wn++;
       const ti = setTypeInfo(stt), nx = setTypeInfo(nextSetType(stt));
       const slabel = stt ? ti.tag : String(wn);
-      h += '<div class="setrow'+wp+(warm?" warm":"")+(st.done?" done":"")+'">'
+      const cv = cardio ? cardioVals(st) : null;
+      const pc = (cardio && p) ? cardioVals(p) : null;
+      h += '<div class="setrow'+wp+(cardio?" cardio":"")+(warm?" warm":"")+(st.done?" done":"")+'">'
         + '<button class="stype'+(stt?" t-"+stt:"")+'" onclick="awCycleSetType('+ei+','+si+')"'
         + ' title="'+esc(ti.name+" – tippen für: "+nx.name)+'"'
         + ' aria-label="'+esc("Satz "+(si+1)+": "+ti.name+" – tippen für "+nx.name)+'">'+esc(slabel)+'</button>'
         + (prev ? (p
-            ? '<button class="pset" onclick="awUsePrev('+ei+','+si+')" title="Werte vom letzten Mal übernehmen" aria-label="Letztes Mal '+fmtKg(p.kg||0)+' Kilogramm mal '+(p.reps||0)+' Wiederholungen – übernehmen">'+fmtKg(p.kg||0)+'×'+(p.reps||0)+'</button>'
+            ? (cardio
+                ? '<button class="pset" onclick="awUsePrev('+ei+','+si+')" title="'+esc("Letztes Mal: "+cardioText(p)+" – übernehmen")+'" aria-label="'+esc("Letztes Mal "+fmtNum(pc.min)+" Minuten"+(pc.km>0?", "+fmtNum(pc.km)+" Kilometer":"")+" – übernehmen")+'">'+esc(fmtNum(pc.min)+"′"+(pc.km>0 ? " "+fmtNum(pc.km) : ""))+'</button>'
+                : '<button class="pset" onclick="awUsePrev('+ei+','+si+')" title="Werte vom letzten Mal übernehmen" aria-label="Letztes Mal '+fmtKg(p.kg||0)+' Kilogramm mal '+(p.reps||0)+' Wiederholungen – übernehmen">'+fmtKg(p.kg||0)+'×'+(p.reps||0)+'</button>')
             : '<button class="pset" disabled aria-hidden="true" tabindex="-1">–</button>') : '')
-        + '<input type="number" inputmode="decimal" value="'+(st.kg||"")+'" placeholder="0" onchange="awSet('+ei+','+si+',\'kg\',this.value)">'
-        + '<input type="number" inputmode="numeric" value="'+(st.reps||"")+'" placeholder="0" onchange="awSet('+ei+','+si+',\'reps\',this.value)">'
+        + (cardio
+            ? '<input type="text" inputmode="decimal" aria-label="'+esc("Satz "+(si+1)+": Dauer in Minuten")+'" value="'+(cv.min?fmtNum(cv.min):"")+'" placeholder="min" onchange="awSet('+ei+','+si+',\'min\',this.value)">'
+              + '<input type="text" inputmode="decimal" aria-label="'+esc("Satz "+(si+1)+": Distanz in Kilometern")+'" value="'+(cv.km?fmtNum(cv.km):"")+'" placeholder="km" onchange="awSet('+ei+','+si+',\'km\',this.value)">'
+            : '<input type="number" inputmode="decimal" value="'+(st.kg||"")+'" placeholder="0" onchange="awSet('+ei+','+si+',\'kg\',this.value)">'
+              + '<input type="number" inputmode="numeric" value="'+(st.reps||"")+'" placeholder="0" onchange="awSet('+ei+','+si+',\'reps\',this.value)">')
         + '<button class="chk" title="Satz abhaken" onclick="awToggleDone('+ei+','+si+')">✓</button>'
         + '<button class="del" style="color:var(--muted); background:none" onclick="awRemoveSet('+ei+','+si+')">✕</button></div>';
     });
+    if(cardio){
+      let cm = 0, ck = 0;
+      for(const st of workSets(e.sets)){ const c = cardioVals(st); cm += c.min; ck += c.km; }
+      if(cm>0 || ck>0){
+        const pace = cardioPace(cm, ck);
+        h += '<div class="csum"><span>Σ '+esc(fmtMin(cm))+(ck>0?' · '+esc(fmtNum(ck))+' km':'')+'</span>'
+          + (pace?'<span>⚡ '+esc(pace)+'</span>':'')
+          + (ck>0 && cm>0 ? '<span>'+esc(fmtNum(Math.round(ck/cm*600)/10))+' km/h</span>' : '')
+          + '</div>';
+      }
+    }
     h += '<button class="btn ghost full small" onclick="awAddSet('+ei+')">＋ Satz</button></div>';
   });
 
@@ -3564,8 +3784,14 @@ function renderActiveWorkout(){
   updateAwBar();
 }
 function awSet(ei, si, field, val){
-  state.active.entries[ei].sets[si][field] = num(val);
+  const st = state.active.entries[ei].sets[si];
+  if((field==="min" || field==="km") && !isCardioSet(st)){
+    const c = cardioVals(st);          // Altformat (kg = km, Wdh. = Minuten) einmalig übernehmen
+    st.min = c.min; st.km = c.km;
+  }
+  st[field] = num(val);
   save();
+  if(field==="min" || field==="km") renderActiveWorkout();   // Summe/Pace aktualisieren
 }
 function awToggleDone(ei, si){
   const st = state.active.entries[ei].sets[si];
@@ -3574,9 +3800,15 @@ function awToggleDone(ei, si){
   if(st.done && (state.profile.restSec||0) > 0) startRest(state.profile.restSec);
 }
 function awAddSet(ei){
-  const sets = state.active.entries[ei].sets;
+  const e = state.active.entries[ei];
+  const sets = e.sets;
   const lastSet = sets[sets.length-1];
-  sets.push({kg:lastSet?lastSet.kg:0, reps:lastSet?lastSet.reps:0, done:false});
+  if(isCardioEx(e.exId)){
+    const c = lastSet ? cardioVals(lastSet) : {min:0, km:0};
+    sets.push({min:c.min, km:c.km, done:false});
+  } else {
+    sets.push({kg:lastSet?lastSet.kg:0, reps:lastSet?lastSet.reps:0, done:false});
+  }
   save(); renderActiveWorkout();
 }
 function awRemoveSet(ei, si){
@@ -3586,7 +3818,8 @@ function awRemoveSet(ei, si){
 function awAddExercise(id){
   const e = getExercise(id);
   if(!e) return;
-  state.active.entries.push({exId:id, name:e.name, sets:[{kg:lastKgFor(id), reps:10, done:false}]});
+  const first = isCardioEx(id) ? {min:0, km:0, done:false} : {kg:lastKgFor(id), reps:10, done:false};
+  state.active.entries.push({exId:id, name:e.name, sets:[first]});
   save();
   document.getElementById("workout-overlay").classList.add("open");
   renderActiveWorkout();
@@ -3660,12 +3893,22 @@ function deleteExNote(id, fromDetail){
 }
 function finishWorkout(){
   const aw = state.active;
-  const entries = aw.entries.map(e=>({exId:e.exId, name:e.name,
-      sets:e.sets.filter(s=>s.done && (s.reps||0)>0).map(s=>{
-        const o = {kg:s.kg||0, reps:s.reps||0};
-        if(setType(s)) o.t = setType(s);      // Satz-Typ additiv mitspeichern
-        return o;
-      })}))
+  const entries = aw.entries.map(e=>{
+      const cardio = isCardioEx(e.exId);
+      return {exId:e.exId, name:e.name,
+        sets:e.sets.filter(s=>{
+            if(!s.done) return false;
+            if(!cardio) return (s.reps||0)>0;
+            const c = cardioVals(s);
+            return c.min>0 || c.km>0;          // Cardio: Dauer oder Distanz genügt
+          }).map(s=>{
+            let o;
+            if(cardio){ const c = cardioVals(s); o = {kg:0, reps:0, min:c.min, km:c.km}; }
+            else o = {kg:s.kg||0, reps:s.reps||0};
+            if(setType(s)) o.t = setType(s);   // Satz-Typ additiv mitspeichern
+            return o;
+          })};
+    })
     .filter(e=>e.sets.length);
   if(!entries.length){
     if(confirm("Keine Sätze abgehakt (✓). Workout verwerfen?")) cancelWorkout(true);
@@ -3704,7 +3947,15 @@ function sessionSetCount(s){ let n = 0; for(const e of s.entries) n += workSets(
 function bestSetOf(e){
   let best = null;
   const ws = workSets(e.sets);
-  for(const st of (ws.length ? ws : (e.sets||[]))) if(!best || (st.kg||0) > (best.kg||0) || ((st.kg||0) === (best.kg||0) && (st.reps||0) > (best.reps||0))) best = st;
+  const pool = ws.length ? ws : (e.sets||[]);
+  if(isCardioEx(e.exId)){
+    for(const st of pool){
+      const c = cardioVals(st), b = best ? cardioVals(best) : {min:0, km:0};
+      if(!best || c.km > b.km || (c.km === b.km && c.min > b.min)) best = st;
+    }
+    return best;
+  }
+  for(const st of pool) if(!best || (st.kg||0) > (best.kg||0) || ((st.kg||0) === (best.kg||0) && (st.reps||0) > (best.reps||0))) best = st;
   return best;
 }
 function showWorkoutSummary(sess, prs){
@@ -3799,7 +4050,7 @@ function buildShareCard(s, prs){
     if(b){
       x.textAlign = "right";
       x.fillStyle = "#a78bfa"; x.font = "700 36px "+F;
-      x.fillText(fmtKg(b.kg||0)+" kg × "+(b.reps||0), W-84, y);
+      x.fillText(isCardioEx(e.exId) ? cardioText(b).replace(" · ", " / ") : fmtKg(b.kg||0)+" kg × "+(b.reps||0), W-84, y);
       x.textAlign = "left";
     }
     y += 62;
@@ -4013,6 +4264,53 @@ function prBoardHtml(){
              : '💡 Tippe auf eine Übung für Kraft-Verlauf und Details.')
     + '</p>';
   return h + '</div>';
+}
+
+/* ---------- Ausdauer-Board: Cardio-Übungen (rein abgeleitet aus state.sessions) ---------- */
+function cardioRecords(){
+  const names = {};
+  for(const s of state.sessions) for(const e of (s.entries||[])) if(isCardioEx(e.exId) && workSets(e.sets).length) names[e.exId] = e.name;
+  const out = [];
+  for(const id in names){
+    const hist = cardioHistory(id);
+    if(!hist.length) continue;
+    let min = 0, km = 0, bestKm = 0, bestMin = 0, bestPace = 0, last = "";
+    for(const h of hist){
+      min += h.min; km += h.km;
+      if(h.bestKm  > bestKm)  bestKm  = h.bestKm;
+      if(h.bestMin > bestMin) bestMin = h.bestMin;
+      if(h.pace > 0 && (bestPace === 0 || h.pace < bestPace)) bestPace = h.pace;
+      if(h.date > last) last = h.date;
+    }
+    const ex = getExercise(id);
+    out.push({id:id, name:(ex && ex.name) || names[id], min:min, km:km, bestKm:bestKm, bestMin:bestMin,
+      pace:bestPace, units:hist.length, last:last});
+  }
+  out.sort((a,b)=> b.km-a.km || b.min-a.min || a.name.localeCompare(b.name,"de"));
+  return out;
+}
+function cardioBoardHtml(){
+  const all = cardioRecords();
+  if(!all.length) return "";        // ohne Cardio-Einheiten bleibt die Ansicht wie bisher
+  let totalKm = 0, totalMin = 0, units = 0;
+  for(const r of all){ totalKm += r.km; totalMin += r.min; units += r.units; }
+  let h = '<div class="card"><div class="cardhead"><span class="cicon">🏃</span><h3>Ausdauer</h3>'
+    + '<span class="muted">'+units+(units===1?' Einheit':' Einheiten')+'</span></div>'
+    + '<div class="statgrid" style="margin:2px 0 12px">'
+    + '<div class="stat"><b>'+(totalKm>0?fmtNum(totalKm)+' km':'–')+'</b><span>Gesamtdistanz</span></div>'
+    + '<div class="stat"><b>'+fmtMin(totalMin)+'</b><span>Gesamtdauer</span></div></div>';
+  for(const r of all){
+    const val = r.km>0 ? fmtNum(r.km)+' km' : fmtMin(r.min);
+    const sub = (r.units>1 ? (r.bestKm>0 ? 'Beste '+fmtNum(r.bestKm)+' km' : (r.bestMin>0 ? 'Längste '+fmtNum(r.bestMin)+' min' : '')) : '')
+      + (r.pace>0 ? (r.units>1 ? ' · ' : '')+'⚡ '+cardioPace(r.pace,1) : '');
+    h += '<button class="prrow crow" onclick="openExerciseDetail(\''+esc(r.id)+'\')"'
+      + ' aria-label="'+esc(r.name+": insgesamt "+(r.km>0?fmtNum(r.km)+" Kilometer":fmtMin(r.min))+", "+r.units+(r.units===1?" Einheit":" Einheiten")+". Details öffnen.")+'">'
+      + '<span class="prrank" aria-hidden="true">🏃</span>'
+      + '<span class="prmain"><b>'+esc(r.name)+'</b><span>'+r.units+(r.units===1?' Einheit':' Einheiten')+' · '+fmtDate(r.last)+(sub?' · '+esc(sub):'')+'</span></span>'
+      + '<span class="prval"><b>'+esc(val)+'</b><span>'+(r.km>0?fmtMin(r.min):'gesamt')+'</span></span>'
+      + '</button>';
+  }
+  return h + '<p class="muted" style="font-size:12px; margin-top:11px">💡 Cardio-Einheiten werden mit Dauer und Distanz erfasst – sie zählen nicht ins Hantel-Volumen.</p></div>';
 }
 
 /* ---------- Fortschritt-Tab mit Unter-Reitern ---------- */
@@ -4245,6 +4543,9 @@ function renderProgressBody(){
   else if(progressSub==="training"){
   // Bestleistungen (persönliche Rekorde je Übung)
   html += prBoardHtml();
+
+  // Ausdauer: Distanz & Dauer je Cardio-Übung
+  html += cardioBoardHtml();
 
   // Trainingsvolumen pro Woche
   const weeks = [];
@@ -4601,14 +4902,18 @@ function exportDiaryCSV(){
 }
 function exportTrainingCSV(){
   const csvCell = v => { const s = String(v==null?"":v).replace(/"/g,'""'); return /[";\n]/.test(s) ? '"'+s+'"' : s; };
-  const rows = [["Datum","Workout","Dauer (min)","Uebung","Satz","Satztyp","Gewicht (kg)","Wdh.","Volumen (kg)"]];
+  const rows = [["Datum","Workout","Dauer (min)","Uebung","Satz","Satztyp","Gewicht (kg)","Wdh.","Volumen (kg)","Satz-Dauer (min)","Distanz (km)"]];
   const sess = state.sessions.slice().sort((a,b)=>a.date.localeCompare(b.date));
   for(const s of sess){
     for(const e of (s.entries||[])){
+      const cardio = isCardioEx(e.exId);
       (e.sets||[]).forEach((st,i)=>{
         const warm = isWarmSet(st);
+        const c = cardio ? cardioVals(st) : null;
         rows.push([s.date, s.name, s.durationMin||"", e.name, i+1, setTypeInfo(setType(st)).name,
-          r1(st.kg||0), st.reps||0, warm ? 0 : r1((st.kg||0)*(st.reps||0))]);
+          cardio ? 0 : r1(st.kg||0), cardio ? 0 : (st.reps||0),
+          (warm || cardio) ? 0 : r1((st.kg||0)*(st.reps||0)),
+          cardio ? r1(c.min) : "", cardio ? r1(c.km) : ""]);
       });
     }
   }
