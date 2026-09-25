@@ -507,6 +507,36 @@
   html.motion #view-dashboard .hero{background:var(--card-solid)}
   html.motion #view-dashboard .hero::before{position:relative; z-index:1}
   html.motion #view-dashboard .hero>*:not(#hero-motion){position:relative; z-index:1}
+
+  /* ===== Schnellsuche (Befehls-Palette) ===== */
+  .qsbox{display:flex; align-items:center; gap:9px; background:var(--card2); border:1px solid var(--border2); border-radius:16px; padding:10px 13px; margin-bottom:4px}
+  .qsbox span{font-size:16px; flex-shrink:0}
+  .qsbox input{background:none; border:none; padding:0; margin:0; font-size:15.5px; font-weight:500; color:var(--text); width:100%}
+  .qsbox input:focus{outline:none; box-shadow:none}
+  .qskbd{display:none; gap:4px; flex-shrink:0}
+  @media (hover:hover) and (pointer:fine){ .qskbd{display:flex} }
+  .qskbd kbd{font:inherit; font-size:10.5px; font-weight:600; color:var(--muted); background:var(--card); border:1px solid var(--border); border-radius:6px; padding:2px 5px; line-height:1.3}
+  .qslist{max-height:56vh; overflow-y:auto; margin-top:6px; -webkit-overflow-scrolling:touch}
+  .qsgrp{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; color:var(--muted); margin:12px 2px 4px}
+  .qsgrp:first-child{margin-top:4px}
+  .qsitem{display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:12px; padding:10px 10px; color:var(--text); cursor:pointer; transition:background .14s}
+  .qsitem .qsi{font-size:18px; width:26px; text-align:center; flex-shrink:0}
+  .qsitem .qst{flex:1; min-width:0}
+  .qsitem .qst b{display:block; font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .qsitem .qst span{display:block; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .qsitem .qsa{font-size:13px; color:var(--muted); flex-shrink:0}
+  @media (hover:hover){ .qsitem:hover{background:var(--card2)} }
+  .qsitem.sel{background:var(--card2); box-shadow:inset 0 0 0 1.5px var(--accent)}
+  .qsitem:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .qshint{font-size:11.5px; color:var(--muted); margin:10px 2px 0; text-align:center}
+
+  /* ===== Portions-Schnellwahl im Hinzufügen-Dialog ===== */
+  .pchips{display:flex; flex-wrap:wrap; gap:7px; margin-top:9px}
+  .pchip{background:var(--card2); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:20px; font-size:12.5px; font-weight:500; cursor:pointer; transition:.18s}
+  .pchip b{font-weight:700}
+  .pchip i{font-style:normal; color:var(--muted); font-size:11.5px}
+  @media (hover:hover){ .pchip:hover{border-color:var(--border2); background:var(--card)} }
+  .pchip:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 </style>
 </head>
 <body>
@@ -515,6 +545,7 @@
   <div class="logo">Fit<b>Track</b></div>
   <div class="row" style="gap:10px">
     <span class="hdate" id="hdate"></span>
+    <button class="tbtn" id="search-btn" onclick="openQuickSearch()" title="Schnellsuche – alles finden und direkt öffnen (Strg + K)" aria-label="Schnellsuche öffnen">🔎</button>
     <button class="tbtn" id="theme-btn" onclick="toggleTheme()" title="Design wechseln (dunkel / hell / automatisch)" aria-label="Design wechseln (dunkel, hell oder automatisch)">☀️</button>
   </div>
 </header>
@@ -2082,7 +2113,8 @@ function renderFoodTabBody(){
     el.innerHTML = '<div class="card" style="margin-bottom:10px"><b>'+esc(s.name)+'</b>'
       + (s.brand && s.brand!=="Speise"?'<div class="muted">'+esc(s.brand)+'</div>':'')
       + '<div class="muted" style="margin-top:4px">pro 100 g: '+r0(s.kcal)+' kcal · P '+r1(s.p)+' · K '+r1(s.c)+' · F '+r1(s.f)+'</div></div>'
-      + '<label>Menge (g / ml)</label><input type="number" id="portion-in" value="100" min="1" oninput="updPortionPreview()">'
+      + '<label>Menge (g / ml)</label><input type="text" inputmode="decimal" id="portion-in" autocomplete="off" aria-label="Menge in Gramm oder Milliliter" value="'+(s.grams>0?fmtNum(s.grams):"100")+'" oninput="updPortionPreview()">'
+      + portionChipsHtml(s)
       + '<p id="portion-preview" class="muted" style="margin-top:8px"></p>'
       + '<div class="row" style="margin-top:14px"><button class="btn ghost grow" onclick="foodModal.selected=null; renderFoodModal()">Zurück</button>'
       + '<button class="btn grow" onclick="confirmAddFood()">Hinzufügen</button></div>';
@@ -2228,6 +2260,56 @@ function deleteCustomFood(i){
   foodModal.editIdx = null;
   save(); renderFoodTabBody();
 }
+/* ---------- Portions-Schnellwahl: typische Haushaltsmaße je Lebensmittel ---------- */
+const PORTION_UNITS = [
+  [["ei","eier"],                                                   [["Ei",60],["2 Eier",120]]],
+  [["knäckebrot","zwieback"],                                        [["Scheibe",10],["2 Scheiben",20]]],
+  [["brot","toast","brötchen","semmel","baguette"],                  [["Scheibe",45],["2 Scheiben",90]]],
+  [["käse","gouda","emmentaler","edamer","mozzarella"],              [["Scheibe",30],["Portion",60]]],
+  [["wurst","schinken","salami","aufschnitt","speck"],               [["Scheibe",20],["Portion",60]]],
+  [["öl","olivenöl","rapsöl","sonnenblumenöl","kokosöl","leinöl","butter","margarine","mayonnaise","honig","marmelade"], [["TL",5],["EL",10]]],
+  [["milch","saft","smoothie","limonade","=cola","buttermilch","kefir"], [["Glas",200],["großes Glas",300]]],
+  [["kaffee","espresso","tee"],                                      [["Tasse",125],["große Tasse",200]]],
+  [["joghurt","skyr","quark","pudding"],                             [["Becher",150],["Packung",250]]],
+  [["haferflocken","müsli","cornflakes","granola"],                  [["Portion",50],["große Portion",80]]],
+  [["reis","nudeln","spaghetti","pasta","couscous","bulgur","linsen","quinoa"], [["Portion roh",75],["Portion gekocht",180]]],
+  [["nüsse","mandeln","walnüsse","cashewkerne","erdnüsse","haselnüsse"], [["Handvoll",25],["2 Handvoll",50]]],
+  [["proteinpulver","whey","eiweißpulver"],                          [["Scoop",30],["2 Scoops",60]]],
+  [["proteinriegel","müsliriegel","riegel"],                         [["Riegel",50]]],
+  [["schokolade","tafel"],                                           [["Reihe",25],["Tafel",100]]],
+  [["pizza"],                                                        [["halbe Pizza",175],["ganze Pizza",350]]],
+  [["banane"],                                                       [["Stück",120]]],
+  [["apfel","birne","orange","paprika","tomate","zwiebel","kartoffel","avocado","karotte","möhre"], [["Stück",130]]],
+  [["hähnchenbrust","hähnchen","hühnerbrust","pute","putenbrust","rindfleisch","schweinefleisch","lachs","thunfisch","forelle","steak","filet","fisch"], [["Portion",150],["große Portion",200]]]
+];
+function portionsFor(name){
+  const words = String(name||"").toLowerCase().replace(/[^a-zäöüß0-9]+/g," ").trim().split(" ").filter(Boolean);
+  for(const rule of PORTION_UNITS){
+    for(const w of words){
+      for(const k of rule[0]){
+        if(k.charAt(0)==="="){ if(w===k.slice(1)) return rule[1]; }        // "=cola": nur exakt (sonst träfe auch „Rucola")
+        else if(w===k || (k.length>=4 && w.endsWith(k))) return rule[1];   // sonst auch als Wortende (Vollkornbrot → brot)
+      }
+    }
+  }
+  return null;
+}
+function portionChipsHtml(s){
+  const units = portionsFor(s && s.name) || [];
+  let h = '<div class="pchips">';
+  for(const u of units){
+    const lab = (/^\d/.test(u[0]) ? "" : "1 ") + u[0];      // „1 Scheibe", aber „2 Scheiben" ohne führende 1
+    h += '<button type="button" class="pchip" onclick="setPortion('+u[1]+')" aria-label="Menge auf '+esc(lab)+' setzen ('+u[1]+' Gramm)"><b>'+esc(lab)+'</b> <i>'+u[1]+' g</i></button>';
+  }
+  for(const g of [30,50,100,150,200,250]) h += '<button type="button" class="pchip" onclick="setPortion('+g+')">'+g+' g</button>';
+  return h + '</div>';
+}
+function setPortion(g){
+  const el = document.getElementById("portion-in");
+  if(!el) return;
+  el.value = fmtNum(g);
+  updPortionPreview();
+}
 function updPortionPreview(){
   const g = num((document.getElementById("portion-in")||{}).value);
   const s = foodModal.selected;
@@ -2235,7 +2317,7 @@ function updPortionPreview(){
   if(el && s) el.textContent = "= "+r0(s.kcal*g/100)+" kcal · P "+r1(s.p*g/100)+" g · K "+r1(s.c*g/100)+" g · F "+r1(s.f*g/100)+" g";
 }
 function confirmAddFood(){
-  const g = num(document.getElementById("portion-in").value);
+  const g = Math.min(5000, Math.round(num(document.getElementById("portion-in").value)*10)/10);
   if(g<=0){ toast("Bitte Menge eingeben"); return; }
   const s = foodModal.selected;
   const d = getDay(nutriDate);
@@ -5462,6 +5544,204 @@ function aiScanConfirm(){
   if(currentTab==="dashboard") renderDashboard();
   toast(chosen.length+" Eintrag"+(chosen.length===1?"":"e")+" zu "+MEALS[aiScan.slot]+" hinzugefügt ✓");
 }
+
+/* ============================================================
+   SCHNELLSUCHE (Befehls-Palette) – Strg/⌘ + K oder „/"
+   Findet Funktionen, Übungen, Lebensmittel, Pläne und Workouts
+   und öffnet sie direkt. Rein navigierend – speichert nichts.
+   ============================================================ */
+let qs = {q:"", sel:0, items:[]};
+
+function qsActions(){
+  const ds = todayStr();
+  const last = state.sessions.slice().sort((a,b)=>b.date.localeCompare(a.date) || (b.start||0)-(a.start||0))[0];
+  const A = [];
+  const add = (grp, icon, title, sub, kw, top, run)=>A.push({grp, icon, title, sub, kw, top, run});
+
+  add("Loggen","🍎","Mahlzeit hinzufügen","Lebensmittel für heute eintragen","essen food kalorien eintragen logging",true,
+      ()=>{ nutriDate = ds; openFoodModal(defaultMealSlot()); });
+  for(const mk of Object.keys(MEALS))
+    add("Loggen", MEAL_ICONS[mk], MEALS[mk]+" eintragen", "Lebensmittel zu "+MEALS[mk]+" hinzufügen", "mahlzeit essen", false,
+        ()=>{ nutriDate = ds; openFoodModal(mk); });
+  add("Loggen","💧","Wasser +1 Glas","250 ml für heute gutschreiben","trinken glas hydration",true, ()=>quickWater());
+  add("Loggen","👟","Schritte eintragen","Schrittzahl für heute erfassen","gehen laufen aktivität",false, ()=>openStepsModal(ds));
+  add("Loggen","⚖️","Gewicht eintragen","Neuen Gewichtswert speichern","wiegen waage kg",true, ()=>openWeightModal());
+  add("Loggen","📏","Körpermaße eintragen","Taille, Brust, Arm, Bein & Co.","umfang maße messen",false, ()=>openMeasureModal());
+  add("Loggen","💤","Schlaf eintragen","Dauer und Qualität der letzten Nacht","nacht erholung schlafen",false, ()=>openSleepModal(ds));
+  add("Loggen","🔥","Aktivität eintragen","Sport außerhalb des Trainings (verbrannte kcal)","cardio spazieren radfahren kalorien",false, ()=>openActivityModal());
+  add("Loggen","📸","Essen mit KI erkennen","Foto aufnehmen, Portionen schätzen lassen","ki ai scan foto kamera",false, ()=>openAiScan());
+
+  add("Training","🏋️","Freies Workout starten","Ohne Plan trainieren und Übungen frei wählen","workout training starten",true, ()=>startWorkout(null));
+  if(last) add("Training","🔁","Letztes Workout wiederholen", last.name+" · "+fmtDate(last.date), "wiederholen nochmal", false,
+               ()=>repeatWorkout(last.id));
+  if(state.active) add("Training","▶️","Laufendes Workout fortsetzen", state.active.name, "aktiv weiter", true, ()=>openWorkoutOverlay());
+  add("Training","⏱","Intervall-Timer","HIIT, Tabata & Zirkeltraining mit Signalton","tabata hiit stoppuhr intervall",true, ()=>openIntervalTimer());
+  add("Training","🧮","Scheiben-Rechner","Welche Hantelscheiben ergeben dein Zielgewicht?","plate hantel scheiben rechner",false, ()=>openPlateCalc());
+  add("Training","📋","Neuen Trainingsplan erstellen","Eigenen Plan mit Übungen und Sätzen anlegen","plan split erstellen",false, ()=>openPlanEditor(null));
+  add("Training","➕","Eigene Übung anlegen","Übung mit Muskelgruppe und Equipment ergänzen","übung custom anlegen",false, ()=>openCustomExerciseModal());
+
+  add("Auswertung","📅","Wochenrückblick","Diese Woche im Vergleich zur Vorwoche","statistik überblick vergleich",true,
+      ()=>{ progressSub="overview"; switchTab("progress"); });
+  add("Auswertung","🏅","Erfolge","Freigeschaltete und offene Badges","badges achievements medaillen",false,
+      ()=>{ progressSub="overview"; switchTab("progress"); });
+  add("Auswertung","🗓️","Aktivitäts-Heatmap","16 Wochen Aktivität auf einen Blick","kalender heatmap streak",false,
+      ()=>{ progressSub="overview"; switchTab("progress"); });
+  add("Auswertung","⚖️","Körper: Gewicht, Maße & Schlaf","Verlauf, Zielgewicht und Schlaf-Auswertung","körper gewicht maße schlaf kurve",false,
+      ()=>{ progressSub="body"; switchTab("progress"); });
+  add("Auswertung","🍽","Ernährungs-Auswertung","Ø Kalorien, Makros, Zielkorridor, Top-Quellen","ernährung auswertung makros protein",false,
+      ()=>{ progressSub="nutrition"; switchTab("progress"); });
+  add("Auswertung","🏆","Bestleistungen & Trainings-Auswertung","Rekorde, Volumen, Muskel-Balance, Ausdauer","pr rekorde volumen balance",true,
+      ()=>{ progressSub="training"; switchTab("progress"); });
+  add("Auswertung","💾","Daten & Export","Sicherung, Import und CSV-Dateien","daten export import backup",false,
+      ()=>{ progressSub="data"; switchTab("progress"); });
+
+  add("Werkzeuge","🤖","KI-Coach: Mahlzeiten-Vorschläge","Passend zu Ziel und Restkalorien","coach vorschlag idee rezept",true, ()=>openCoach());
+  add("Werkzeuge","🛒","Wocheneinkauf planen","Einkaufsliste nach Geld-Budget","einkauf budget liste supermarkt",false,
+      ()=>{ openCoach(); coachView("shop"); });
+  add("Werkzeuge","🧮","Kalorienbedarf berechnen","Grund- und Gesamtumsatz (TDEE) ermitteln","tdee bmr grundumsatz rechner",false,
+      ()=>{ switchTab("profile"); calcTDEE(); });
+  add("Werkzeuge","🎯","Zielgewicht festlegen","Wunschgewicht mit Fortschrittsbalken","zielgewicht wunschgewicht ziel",false, ()=>openTargetModal());
+  add("Werkzeuge","🚀","Einrichtungs-Assistent","Ziel, Körperdaten und Kalorienziel in 3 Schritten","onboarding setup einrichten assistent",false, ()=>openOnboarding());
+  add("Werkzeuge","🎨","Design wechseln","Dunkel, hell oder automatisch","theme dark light mode farbe",false, ()=>toggleTheme());
+  add("Werkzeuge","📤","Alle Daten exportieren (JSON)","Komplette Sicherung zum Herunterladen","backup sicherung json export",false, ()=>exportData());
+  add("Werkzeuge","📤","Ernährung als CSV exportieren","Tagebuch für Excel & Co.","csv ernährung export tabelle",false, ()=>exportDiaryCSV());
+  add("Werkzeuge","📤","Training als CSV exportieren","Alle Workouts und Sätze als Tabelle","csv training export tabelle",false, ()=>exportTrainingCSV());
+  add("Werkzeuge","📤","Körperdaten als CSV exportieren","Gewicht, Maße, Schritte, Schlaf","csv körper export tabelle",false, ()=>exportBodyCSV());
+
+  add("Bereiche","🏠","Start","Dashboard mit Kalorien, Wasser und Training","dashboard home übersicht",false, ()=>switchTab("dashboard"));
+  add("Bereiche","🍎","Ernährungstagebuch","Mahlzeiten des Tages","tagebuch diary essen",false, ()=>switchTab("nutrition"));
+  add("Bereiche","🏋️","Training","Workout, Pläne, Verlauf und Übungen","gym workout",false, ()=>switchTab("training"));
+  add("Bereiche","📈","Fortschritt","Auswertungen und Statistiken","statistik progress",false, ()=>switchTab("progress"));
+  add("Bereiche","👤","Profil & Ziele","Körperdaten, Kalorienziel, Makros, Wochenziel","einstellungen profil ziele settings",false, ()=>switchTab("profile"));
+  return A;
+}
+
+function qsNorm(s){ return String(s==null?"":s).toLowerCase(); }
+function qsScore(hay, toks){
+  let sc = 0;
+  for(const t of toks){
+    const i = hay.indexOf(t);
+    if(i<0) return -1;
+    sc += (i===0) ? 3 : (hay.charAt(i-1)===" " ? 2 : 1);
+  }
+  return sc;
+}
+function qsRank(list, toks, textOf, max){
+  const hits = [];
+  for(const x of list){
+    const sc = qsScore(qsNorm(textOf(x)), toks);
+    if(sc>=0) hits.push({x, sc});
+  }
+  hits.sort((a,b)=>b.sc-a.sc);
+  return hits.slice(0, max).map(h=>h.x);
+}
+function qsCollect(q){
+  const query = qsNorm(q).trim();
+  const toks = query ? query.split(/\s+/).filter(Boolean) : [];
+  const acts = qsActions();
+  if(!toks.length) return acts.filter(a=>a.top).map(a=>Object.assign({}, a, {grp:"Häufig genutzt"}));
+
+  const out = qsRank(acts, toks, a=>a.title+" "+(a.sub||"")+" "+(a.kw||""), 8)
+                .map(a=>Object.assign({}, a, {grp:"Aktionen"}));
+
+  for(const e of qsRank(allExercises(), toks, e=>e.name+" "+e.muscle+" "+(e.equip||""), 6))
+    out.push({grp:"Übungen", icon:"💪", title:e.name, sub:e.muscle+(e.equip?" · "+e.equip:"")+" · Fortschritt ansehen",
+              run:(function(id){ return ()=>openExerciseDetail(id); })(e.id)});
+
+  if(query.length>=2){
+    const foods = state.customFoods.map(f=>({f, custom:true})).concat(FOOD_CATALOG.map(f=>({f, custom:false})));
+    for(const x of qsRank(foods, toks, x=>x.f.name+" "+(x.f.brand||""), 6))
+      out.push({grp:"Lebensmittel", icon:"🍎", title:x.f.name,
+                sub:(x.f.brand && x.f.brand!=="Speise" ? x.f.brand+" · " : "")+r0(x.f.kcal)+" kcal/100 g"+(x.custom?" · eigenes":""),
+                run:(function(food){ return ()=>{ nutriDate = todayStr(); openFoodModal(defaultMealSlot());
+                        foodModal.selected = Object.assign({}, food); renderFoodTabBody(); }; })(x.f)});
+  }
+
+  const plans = state.plans.map(p=>({p, preset:false})).concat(PRESET_PLANS.map(p=>({p, preset:true})));
+  for(const x of qsRank(plans, toks, x=>x.p.name+" "+(x.p.desc||""), 4))
+    out.push({grp:"Trainingspläne", icon:"📋", title:x.p.name,
+              sub:(x.preset?"Vorlage · ":"")+x.p.items.length+" Übungen · Workout starten",
+              run:(function(id, pre){ return ()=>startWorkoutFromPlan(id, pre); })(x.p.id, x.preset)});
+
+  for(const s of qsRank(state.sessions, toks, s=>s.name+" "+(s.note||"")+" "+(s.entries||[]).map(e=>e.name).join(" "), 4))
+    out.push({grp:"Workouts im Verlauf", icon:"🗂", title:s.name,
+              sub:fmtDate(s.date)+" · "+(s.entries||[]).length+" Übungen · im Verlauf zeigen",
+              run:(function(name){ return ()=>{ histFilter.q = name; histFilter.days = 0; trainingSub = "history"; switchTab("training"); }; })(s.name)});
+  return out;
+}
+
+function openQuickSearch(){
+  qs = {q:"", sel:0, items:[]};
+  openModal('<h3>🔎 Schnellsuche</h3>'
+    + '<div class="qsbox"><span aria-hidden="true">🔎</span>'
+    + '<input type="text" id="qs-in" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Funktion, Übung, Lebensmittel oder Plan…" aria-label="Schnellsuche" aria-controls="qs-list">'
+    + '<span class="qskbd" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd><kbd>↵</kbd></span></div>'
+    + '<div class="qslist" id="qs-list" role="listbox" aria-label="Suchergebnisse"></div>'
+    + '<p class="qshint">Tipp: mit <b>Strg + K</b> (bzw. <b>⌘ + K</b>) überall öffnen.</p>');
+  qsRender();
+  const inp = document.getElementById("qs-in");
+  if(inp){
+    inp.addEventListener("input", function(){ qs.q = this.value; qs.sel = 0; qsRender(); });
+    inp.addEventListener("keydown", function(e){
+      if(e.key==="ArrowDown"){ e.preventDefault(); qsMove(1); }
+      else if(e.key==="ArrowUp"){ e.preventDefault(); qsMove(-1); }
+      else if(e.key==="Enter"){ e.preventDefault(); qsRun(qs.sel); }
+    });
+    inp.focus({preventScroll:true});
+  }
+}
+function qsRender(){
+  const el = document.getElementById("qs-list");
+  if(!el) return;
+  qs.items = qsCollect(qs.q);
+  if(qs.sel >= qs.items.length) qs.sel = qs.items.length-1;
+  if(qs.sel < 0) qs.sel = 0;
+  if(!qs.items.length){
+    el.innerHTML = '<p class="empty">Nichts gefunden – probiere z. B. „Timer“, „Banane“ oder „Bankdrücken“.</p>';
+    return;
+  }
+  let h = "", grp = "";
+  qs.items.forEach(function(it, i){
+    if(it.grp!==grp){ grp = it.grp; h += '<div class="qsgrp">'+esc(grp)+'</div>'; }
+    h += '<button type="button" class="qsitem'+(i===qs.sel?" sel":"")+'" id="qs-i'+i+'" role="option" aria-selected="'+(i===qs.sel)+'" onclick="qsRun('+i+')" onmousemove="qsHover('+i+')">'
+      + '<span class="qsi" aria-hidden="true">'+it.icon+'</span>'
+      + '<span class="qst"><b>'+esc(it.title)+'</b>'+(it.sub?'<span>'+esc(it.sub)+'</span>':'')+'</span>'
+      + '<span class="qsa" aria-hidden="true">↵</span></button>';
+  });
+  el.innerHTML = h;
+}
+function qsSelect(i){
+  const old = document.getElementById("qs-i"+qs.sel);
+  if(old){ old.classList.remove("sel"); old.setAttribute("aria-selected","false"); }
+  qs.sel = i;
+  const nw = document.getElementById("qs-i"+i);
+  if(nw){ nw.classList.add("sel"); nw.setAttribute("aria-selected","true"); }
+  return nw;
+}
+function qsHover(i){ if(qs.sel!==i) qsSelect(i); }
+function qsMove(d){
+  if(!qs.items.length) return;
+  const n = qs.items.length;
+  const nw = qsSelect((qs.sel + d + n) % n);
+  if(nw && nw.scrollIntoView) nw.scrollIntoView({block:"nearest"});
+}
+function qsRun(i){
+  const it = qs.items[i];
+  if(!it) return;
+  closeModal();
+  try{ it.run(); }catch(e){ console.warn("Schnellsuche-Aktion fehlgeschlagen", e); toast("Aktion nicht möglich"); }
+}
+/* Tastatur: Strg/⌘ + K überall, „/" außerhalb von Eingabefeldern */
+document.addEventListener("keydown", function(e){
+  const k = (e.key||"").toLowerCase();
+  const bg = document.getElementById("modal-bg");
+  const ov = document.getElementById("workout-overlay");
+  if((bg && bg.classList.contains("open")) || (ov && ov.classList.contains("open"))) return;
+  const t = e.target, tag = ((t && t.tagName) || "").toLowerCase();
+  const inField = tag==="input" || tag==="textarea" || tag==="select" || (t && t.isContentEditable);
+  if((e.ctrlKey || e.metaKey) && !e.altKey && k==="k"){ e.preventDefault(); openQuickSearch(); return; }
+  if(k==="/" && !e.ctrlKey && !e.metaKey && !e.altKey && !inField){ e.preventDefault(); openQuickSearch(); }
+});
 
 /* ---------- Schönere Leerzustände ---------- */
 function emptyState(icon, title, sub){
